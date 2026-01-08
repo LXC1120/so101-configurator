@@ -1,1 +1,325 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>舵机配置工具（Web Serial）</title>
+  <style>
+    :root{color-scheme:light dark}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"PingFang SC","Microsoft YaHei",sans-serif;max-width:900px;margin:0 auto;padding:18px;line-height:1.45}
+    h1{font-size:20px;margin:0 0 10px}
+    .card{border:1px solid rgba(127,127,127,.25);border-radius:14px;padding:14px;margin:12px 0;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+    .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+    label{display:flex;gap:8px;align-items:center}
+    input,select,button{font:inherit}
+    input{padding:8px 10px;border-radius:10px;border:1px solid rgba(127,127,127,.35);width:130px}
+    button{padding:10px 14px;border-radius:12px;border:1px solid rgba(127,127,127,.35);cursor:pointer}
+    button:disabled{opacity:.45;cursor:not-allowed}
+    .ok{color:#0a7a2f}
+    .warn{color:#b45309}
+    .bad{color:#b91c1c}
+    pre{background:rgba(0,0,0,.85);color:#e8eefc;padding:12px;border-radius:14px;overflow:auto;max-height:340px}
+    code{background:rgba(127,127,127,.18);padding:2px 6px;border-radius:8px}
+    .small{font-size:12px;opacity:.8}
+    .pill{display:inline-block;padding:2px 10px;border:1px solid rgba(127,127,127,.35);border-radius:999px}
+  </style>
+</head>
+<body>
+  <h1>舵机配置工具（Web Serial / Chrome）</h1>
+  <div class="small">
+    <span class="pill" id="statusPill">未连接</span>
+    <span class="pill">协议：FF FF…（与原脚本一致）</span>
+  </div>
 
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div class="row">
+        <button id="btnConnect">连接串口</button>
+        <button id="btnDisconnect" disabled>断开</button>
+      </div>
+      <label>波特率
+        <input id="baud" inputmode="numeric" value="1000000" />
+      </label>
+    </div>
+    <p class="small warn" style="margin:10px 0 0">
+      Web Serial 仅在 <b>HTTPS</b>（或 <code>http://localhost</code>）可用；请使用 <b>桌面版</b> Chrome/Edge。
+    </p>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:16px;margin:0 0 10px">改号（保持原脚本流程）</h2>
+    <div class="row">
+      <label>目标新 ID（1-253）
+        <input id="newId" inputmode="numeric" min="1" max="253" value="1" />
+      </label>
+      <label class="small" style="gap:10px">
+        <input id="confirmOneServo" type="checkbox" />
+        我确认目前只连接了 <b>1 个</b> 舵机
+      </label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button id="btnPingBroadcast" disabled>Ping 广播(0xFE)</button>
+      <button id="btnDoChange" disabled>开始配置</button>
+    </div>
+    <p class="small warn" style="margin:10px 0 0">
+      ⚠️ 必须外接电源（如 6V+）。USB 串口不供电。TX/RX 需交叉，且 GND 必须共地。
+    </p>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:16px;margin:0 0 10px">日志</h2>
+    <pre id="log"></pre>
+    <div class="row small" style="justify-content:space-between;margin-top:10px">
+      <span>提示：浏览器会弹窗让你选择串口设备，这是正常的权限机制。</span>
+      <button id="btnClearLog">清空日志</button>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ====== 常量：与原脚本一致 ======
+  const BROADCAST_ID = 0xFE;   // 254
+  const ADDR_ID      = 0x05;   // ID 地址
+  const ADDR_LOCK    = 0x37;   // 锁地址
+  const ADDR_TORQUE  = 0x28;   // 扭力开关
+
+  // ====== 状态 ======
+  let port = null;
+  let writer = null;
+  let reader = null;
+  let readLoopRunning = false;
+  let rxBuf = [];
+
+  // ====== UI ======
+  const logEl = document.getElementById('log');
+  const statusPill = document.getElementById('statusPill');
+
+  const btnConnect = document.getElementById('btnConnect');
+  const btnDisconnect = document.getElementById('btnDisconnect');
+  const btnPingBroadcast = document.getElementById('btnPingBroadcast');
+  const btnDoChange = document.getElementById('btnDoChange');
+  const btnClearLog = document.getElementById('btnClearLog');
+
+  const baudEl = document.getElementById('baud');
+  const newIdEl = document.getElementById('newId');
+  const confirmOneServoEl = document.getElementById('confirmOneServo');
+
+  function setStatus(text, kind="") {
+    statusPill.textContent = text;
+    statusPill.className = "pill " + kind;
+  }
+
+  function log(msg) {
+    const t = new Date().toLocaleTimeString();
+    logEl.textContent += `[${t}] ${msg}\n`;
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // ====== 协议：校验与组包（与脚本一致：checksum = (~sum(data)) & 0xFF）======
+  function calcChecksum(dataBytes) {
+    let sum = 0;
+    for (const b of dataBytes) sum += b;
+    return (~sum) & 0xFF;
+  }
+  function buildPacket(dataBytes) {
+    const chk = calcChecksum(dataBytes);
+    return new Uint8Array([0xFF, 0xFF, ...dataBytes, chk]);
+  }
+
+  async function ensureWriter() {
+    if (!port) throw new Error("未连接串口");
+    if (!writer) writer = port.writable.getWriter();
+  }
+
+  async function writeRaw(u8) {
+    await ensureWriter();
+    await writer.write(u8);
+  }
+
+  // ====== 读取：最小实现（用于判断是否有回包）======
+  async function startReadLoop() {
+    reader = port.readable.getReader();
+    readLoopRunning = true;
+    rxBuf = [];
+    (async () => {
+      try {
+        while (readLoopRunning) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value && value.length) {
+            for (const b of value) rxBuf.push(b);
+            if (rxBuf.length > 4096) rxBuf = rxBuf.slice(-2048);
+          }
+        }
+      } catch (e) {
+        log(`读取异常: ${e.message || e}`);
+      }
+    })();
+  }
+
+  async function stopReadLoop() {
+    readLoopRunning = false;
+    if (reader) {
+      try { await reader.cancel(); } catch {}
+      try { reader.releaseLock(); } catch {}
+      reader = null;
+    }
+    rxBuf = [];
+  }
+
+  // ====== 命令：ping / write（与脚本一致的包结构）======
+  async function ping(targetId, timeoutMs = 150) {
+    // FF FF ID 02 01 CHK
+    const data = [targetId & 0xFF, 0x02, 0x01];
+    const pkt = buildPacket(data);
+    rxBuf = [];
+    await writeRaw(pkt);
+
+    const start = performance.now();
+    while (performance.now() - start < timeoutMs) {
+      // 与脚本类似：只要缓冲达到最小阈值，就认为“收到回包”
+      if (rxBuf.length >= 6) return true;
+      await sleep(5);
+    }
+    return false;
+  }
+
+  async function writeReg(targetId, address, value) {
+    // FF FF ID 04 03 ADDR VAL CHK
+    const data = [targetId & 0xFF, 0x04, 0x03, address & 0xFF, value & 0xFF];
+    const pkt = buildPacket(data);
+    rxBuf = [];
+    await writeRaw(pkt);
+    await sleep(50); // 对齐脚本节奏
+  }
+
+  // ====== 一键改号：严格保持原脚本顺序 ======
+  async function changeId(newId) {
+    newId = Number(newId);
+    if (!(newId >= 1 && newId <= 253)) throw new Error("ID 需在 1~253");
+
+    log(`开始：目标新 ID = ${newId}`);
+
+    // 0) 广播 ping（仅用于提示，不作为强依赖）
+    log(`PING 广播(0xFE) ...`);
+    const seen = await ping(BROADCAST_ID);
+    log(seen ? "检测到回包（广播）" : "未检测到回包（某些设备可能不回广播 PING，继续尝试写入）");
+
+    // A) 解锁：广播写 0
+    log(`A) 解锁：写 ADDR 0x${ADDR_LOCK.toString(16)} = 0（广播）`);
+    await writeReg(BROADCAST_ID, ADDR_LOCK, 0);
+
+    // B) 关扭力：广播写 0
+    log(`B) 关扭力：写 ADDR 0x${ADDR_TORQUE.toString(16)} = 0（广播）`);
+    await writeReg(BROADCAST_ID, ADDR_TORQUE, 0);
+
+    // C) 写 ID：广播写 newId
+    log(`C) 写ID：写 ADDR 0x${ADDR_ID.toString(16)} = ${newId}（广播）`);
+    await writeReg(BROADCAST_ID, ADDR_ID, newId);
+    await sleep(150); // 等待 EPROM 写入（对齐脚本）
+
+    // D) 上锁：对新 ID 写 1
+    log(`D) 上锁：写 ADDR 0x${ADDR_LOCK.toString(16)} = 1（ID=${newId}）`);
+    await writeReg(newId, ADDR_LOCK, 1);
+
+    // 验证：ping 新 ID（一次不行就 0.5s 后重试）
+    log(`验证：PING ID=${newId} ...`);
+    let ok = await ping(newId, 180);
+    if (!ok) {
+      log("第一次验证超时，0.5s 后重试...");
+      await sleep(500);
+      ok = await ping(newId, 180);
+    }
+
+    if (ok) {
+      log("✅ 修改成功！");
+      setStatus(`已连接（最近成功改号：${newId}）`, "ok");
+    } else {
+      log("❌ 修改失败：请检查外接电源、线序（TX/RX/GND）、波特率是否一致。");
+      throw new Error("验证失败");
+    }
+  }
+
+  function setUiConnected(connected) {
+    btnConnect.disabled = connected;
+    btnDisconnect.disabled = !connected;
+    btnPingBroadcast.disabled = !connected;
+    btnDoChange.disabled = !connected;
+    baudEl.disabled = connected;
+    if (!connected) setStatus("未连接");
+    else setStatus("已连接", "ok");
+  }
+
+  // ====== 事件 ======
+  btnClearLog.onclick = () => { logEl.textContent = ""; };
+
+  btnConnect.onclick = async () => {
+    try {
+      if (!("serial" in navigator)) {
+        alert("当前浏览器不支持 Web Serial。请使用桌面版 Chrome/Edge。");
+        return;
+      }
+      const baudRate = Number(baudEl.value || "1000000");
+      if (!Number.isFinite(baudRate) || baudRate <= 0) {
+        alert("波特率不合法");
+        return;
+      }
+
+      port = await navigator.serial.requestPort();
+      await port.open({ baudRate });
+      await startReadLoop();
+
+      setUiConnected(true);
+      log(`已连接串口，baud=${baudRate}`);
+    } catch (e) {
+      log(`连接失败: ${e.message || e}`);
+      setUiConnected(false);
+      port = null;
+    }
+  };
+
+  btnDisconnect.onclick = async () => {
+    try {
+      await stopReadLoop();
+      if (writer) { try { writer.releaseLock(); } catch {} writer = null; }
+      if (port) { await port.close(); }
+      port = null;
+      setUiConnected(false);
+      log("已断开串口");
+    } catch (e) {
+      log(`断开失败: ${e.message || e}`);
+    }
+  };
+
+  btnPingBroadcast.onclick = async () => {
+    try {
+      const ok = await ping(BROADCAST_ID);
+      log(ok ? "广播 PING：检测到回包" : "广播 PING：未检测到回包");
+    } catch (e) {
+      log(`广播 PING 失败: ${e.message || e}`);
+    }
+  };
+
+  btnDoChange.onclick = async () => {
+    try {
+      if (!confirmOneServoEl.checked) {
+        alert("请先勾选“我确认目前只连接了 1 个舵机”。");
+        return;
+      }
+      btnDoChange.disabled = true;
+      await changeId(newIdEl.value);
+    } catch (e) {
+      // 保持提示即可
+    } finally {
+      btnDoChange.disabled = false;
+    }
+  };
+
+  // 初始
+  setUiConnected(false);
+})();
+</script>
+</body>
+</html>
