@@ -99,7 +99,7 @@
 
   <div class="grid">
     <div class="card">
-      <h2>扫描舵机（实时显示位置等）</h2>
+      <h2>扫描舵机（发现有哪些ID）</h2>
       <div class="row">
         <label>扫描 ID 从
           <input id="scanStart" inputmode="numeric" min="0" max="253" value="1" />
@@ -107,7 +107,7 @@
         <label>到
           <input id="scanEnd" inputmode="numeric" min="0" max="253" value="20" />
         </label>
-        <label>刷新(ms)
+        <label>扫描周期(ms)
           <input id="scanPeriod" inputmode="numeric" value="200" />
         </label>
       </div>
@@ -116,6 +116,16 @@
         <button id="btnScanStop" disabled>停止扫描</button>
         <span class="small" id="scanState">未运行</span>
       </div>
+
+      <div class="row" style="margin-top:10px">
+        <label>位置刷新(ms)
+          <input id="posPeriod" inputmode="numeric" value="50" />
+        </label>
+        <button id="btnPosStart" disabled>开始实时位置</button>
+        <button id="btnPosStop" disabled>停止实时位置</button>
+        <span class="small" id="posState">实时位置：未运行</span>
+      </div>
+
       <div style="margin-top:10px;overflow:auto;max-height:220px">
         <table>
           <thead><tr><th>ID</th><th>位置</th><th>速度</th><th>负载</th><th>电压</th><th>温度</th><th>更新时间</th></tr></thead>
@@ -128,24 +138,18 @@
     </div>
 
     <div class="card">
-      <h2>重置中置位 / 状态重置</h2>
+      <h2>中值校准 / 状态重置</h2>
       <div class="row">
         <label>目标舵机 ID
           <input id="actId" inputmode="numeric" min="0" max="253" value="1" />
         </label>
-        <label>速度(步/秒)
-          <input id="actSpeed" inputmode="numeric" value="1000" />
-        </label>
-        <label>时间(ms)
-          <input id="actTime" inputmode="numeric" value="0" />
-        </label>
       </div>
       <div class="row" style="margin-top:10px">
-        <button id="btnCenter" disabled>转到中位(2048)</button>
+        <button id="btnCenter" disabled>写40=128（中值校准）</button>
         <button id="btnResetState" disabled>状态重置(RESET 0x0A)</button>
       </div>
       <p class="small warn" style="margin:10px 0 0">
-        中位写入首地址 <code>0x2A</code>：位置(2048)、时间、速度，共 6 字节；状态重置使用指令 <code>0x0A</code>（无参数）。
+        中值校准：按你的需求向 <code>0x28</code>（40号地址）写入 <code>128</code>；状态重置使用指令 <code>0x0A</code>（无参数）。
       </p>
     </div>
   </div>
@@ -160,6 +164,7 @@
   </div>
 
 <script>
+
 (() => {
   // ====== 常量：与原脚本一致 ======
   const BROADCAST_ID = 0xFE;   // 254
@@ -215,6 +220,10 @@
   const btnScanStart = document.getElementById('btnScanStart');
   const btnScanStop = document.getElementById('btnScanStop');
   const scanStateEl = document.getElementById('scanState');
+  const posPeriodEl = document.getElementById('posPeriod');
+  const btnPosStart = document.getElementById('btnPosStart');
+  const btnPosStop = document.getElementById('btnPosStop');
+  const posStateEl = document.getElementById('posState');
   const scanTableBody = document.getElementById('scanTableBody');
 
   const actIdEl = document.getElementById('actId');
@@ -430,13 +439,14 @@
   // ====== 流水线：持续检测插入 -> 写ID -> 等待拔出 ======
   async function runPipeline(startId, endId, abortRef) {
     const s = Number(startId), e = Number(endId);
-    if (!(s >= 1 && s <= 253 && e >= 1 && e <= 253 && s <= e)) throw new Error("起始/结束 ID 不合法");
+    if (!(s >= 0 && s <= 253 && e >= 0 && e <= 253 && s <= e)) throw new Error("起始/结束 ID 不合法");
 
-    pipelineStateEl.textContent = `运行中：等待插入（目标 ${s}..${e}）`;
+    pipeStateEl.textContent = `运行中：等待插入（目标 ${s}..${e}）`;
     log(`流水线开始：范围 ${s}..${e}`);
 
     let targetId = s;
 
+    // 说明：用广播 PING 作为“插入检测”。若总线上有多个舵机会同时应答导致冲突。
     while (!abortRef.abort && targetId <= e) {
       pipeStateEl.textContent = `等待插入：目标 ID=${targetId}`;
 
@@ -447,6 +457,55 @@
         await sleep(80);
       }
       if (abortRef.abort) break;
+
+      log(`>> 检测到舵机插入，开始写入 ID=${targetId}`);
+
+      try {
+        // A 解锁（写 0 允许保存）
+        await writeReg(BROADCAST_ID, ADDR_LOCK, 0);
+        // B 关扭力（写 0）
+        await writeReg(BROADCAST_ID, ADDR_TORQUE, 0);
+        // C 写 ID（地址 0x05）
+        await writeReg(BROADCAST_ID, ADDR_ID, targetId);
+        await sleep(160); // 等待 EPROM 写入
+        // D 上锁（写 1）
+        await writeReg(targetId, ADDR_LOCK, 1);
+
+        // E 验证
+        const ok = await ping(targetId, 220);
+        if (!ok) throw new Error("验证失败：PING 不通（请确认供电/只接 1 个舵机）");
+
+        log(`✅ 写入成功：ID=${targetId}`);
+      } catch (err) {
+        log(`❌ 写入异常：${err?.message || err}`);
+        // 写入失败后不要自动推进 ID，等待用户拔插后重试
+      }
+
+      // 2) 等待断开：对“目标ID”持续 ping 不通 >= 1000ms 才认为拔掉
+      log("等待拔掉舵机…");
+      let lostSince = null;
+      while (!abortRef.abort) {
+        const ok = await ping(targetId, 120);
+        if (ok) {
+          lostSince = null;
+        } else {
+          if (lostSince === null) lostSince = performance.now();
+          if (performance.now() - lostSince >= 1000) break;
+        }
+        await sleep(80);
+      }
+      if (abortRef.abort) break;
+
+      log("已检测到断开 ✂️");
+      await sleep(150);
+
+      targetId += 1;
+    }
+
+    const done = !abortRef.abort;
+    pipeStateEl.textContent = done ? `完成：已配置至 ${Math.min(e, targetId - 1)}` : "已中断";
+    log(done ? "🎉 流水线完成" : "⏹️ 流水线已中断");
+  }      if (abortRef.abort) break;
 
       log(`>> 检测到舵机插入，开始写入 ID=${targetId}`);
 
@@ -505,7 +564,56 @@
   }
 
   // ====== 扫描：轮询范围内在线舵机并读状态 ======
-  function renderScanTable() {
+  
+  async function syncRead(address, length, ids, timeoutMs = 180) {
+    // SYNC READ 指令 0x82：FF FF FE (N+4) 82 addr len id... chk
+    if (!ids || !ids.length) return new Map();
+    const params = [address & 0xFF, length & 0xFF, ...ids.map(n => n & 0xFF)];
+    const pkt = buildPacket(BROADCAST_ID, 0x82, params);
+    await writeRaw(pkt);
+
+    const out = new Map();
+    for (const id of ids) {
+      const frame = await waitFrame(id, timeoutMs);
+      if (!frame) continue;
+      // frame = [FF FF ID LEN ERROR ... CHK]
+      const err = frame[4];
+      if (err !== 0) continue;
+      const data = frame.slice(5, 5 + length);
+      out.set(id, data);
+    }
+    return out;
+  }
+
+  // ====== 实时位置循环（与扫描分开） ======
+  let posLoopRunning = false;
+  let posAbort = { abort: false };
+
+  async function runPosLoop(periodMs, abortRef) {
+    const p = Math.max(20, Number(periodMs) || 50);
+    posLoopRunning = true;
+    posAbort = abortRef;
+    while (!abortRef.abort) {
+      const ids = Array.from(scanMap.keys()).sort((a,b)=>a-b);
+      if (ids.length) {
+        // 一次性同步读 0x38 起 8 字节：位置/速度/负载/电压/温度
+        const dataMap = await syncRead(ADDR_PRESENT, LEN_PRESENT, ids, 160);
+        const now = Date.now();
+        for (const [id, data] of dataMap.entries()) {
+          const pos = u16le(data[0], data[1]);
+          const spd = u16le(data[2], data[3]);
+          const load = u16le(data[4], data[5]);
+          const vol = data[6];
+          const tmp = data[7];
+          scanMap.set(id, { id, pos, speed: spd, load, voltage: vol, temp: tmp, ts: now });
+        }
+        renderScanTable();
+      }
+      await sleep(p);
+    }
+    posLoopRunning = false;
+  }
+function renderScanTable() {
     const rows = Array.from(scanMap.values()).sort((a,b)=>a.id-b.id);
     if (!rows.length) {
       scanTableBody.innerHTML = `<tr><td colspan="7" class="small">（未发现舵机）</td></tr>`;
@@ -527,13 +635,25 @@
     }).join('');
   }
 
-  async function scanOnce(id) {
-    const ok = await ping(id, 120);
-    if (!ok) {
-      // 若之前存在，保留一会儿也行；这里直接删除
-      scanMap.delete(id);
-      return;
+  async function scanOnce(startId, endId) {
+    const s = Number(startId), e = Number(endId);
+    if (!(s >= 0 && s <= 253 && e >= 0 && e <= 253 && s <= e)) throw new Error("扫描范围不合法");
+
+    // 只做“发现ID”，不读位置（位置由实时位置开关来读）
+    const found = [];
+    for (let id = s; id <= e; id++) {
+      const ok = await ping(id, 60);
+      if (ok) {
+        found.push(id);
+        if (!scanMap.has(id)) scanMap.set(id, { id, pos:null, speed:null, load:null, voltage:null, temp:null, ts: Date.now() });
+      }
+      // 小间隔，避免挤爆串口
+      await sleep(8);
     }
+
+    scanStateEl.textContent = found.length ? `已发现：${found.join(", ")}` : "未发现舵机";
+    renderScanTable();
+  }
     const res = await readData(id, ADDR_PRESENT, LEN_PRESENT, 220);
     if (!res || !res.params || res.params.length < 8) {
       scanMap.set(id, { id, ts: Date.now() });
@@ -549,23 +669,14 @@
   }
 
   async function runScan(startId, endId, periodMs, abortRef) {
-    const s = Number(startId), e = Number(endId);
-    const period = Math.max(60, Number(periodMs) || 200);
-    if (!(s >= 0 && s <= 253 && e >= 0 && e <= 253 && s <= e)) throw new Error("扫描范围不合法");
-
-    scanStateEl.textContent = `运行中：${s}..${e}`;
-    log(`开始扫描：${s}..${e}，刷新=${period}ms`);
-
-    scanMap.clear();
-    renderScanTable();
-
+    const p = Math.max(120, Number(periodMs) || 500);
+    scanStateEl.textContent = "扫描中…";
     while (!abortRef.abort) {
-      const t0 = performance.now();
-      for (let id = s; id <= e; id++) {
-        if (abortRef.abort) break;
-        await scanOnce(id);
-        await sleep(2);
-      }
+      await scanOnce(startId, endId);
+      await sleep(p);
+    }
+    scanStateEl.textContent = "已停止";
+  }
       renderScanTable();
       const spent = performance.now() - t0;
       const wait = Math.max(0, period - spent);
@@ -582,18 +693,13 @@
     return [v & 0xFF, (v >> 8) & 0xFF];
   }
 
-  async function moveToCenter(targetId, speed, timeMs) {
+  async function writeMiddleCalibrate(targetId) {
     const id = Number(targetId);
     if (!(id >= 0 && id <= 253)) throw new Error("目标 ID 不合法");
-
-    const posBytes = toLE2(2048);
-    const timeBytes = toLE2(timeMs);
-    const speedBytes = toLE2(speed);
-
-    log(`中置：写 ${toHex(ADDR_GOAL)} 位置=2048 时间=${timeMs} 速度=${speed}（ID=${id}）`);
-    await writeBytes(id, ADDR_GOAL, [...posBytes, ...timeBytes, ...speedBytes]);
+    // 按你的需求：向 40 号地址（ADDR_TORQUE=0x28）写入 128，将当前位置校正为 2048
+    await writeReg(id, ADDR_TORQUE, 128);
+    log(`已写入：ID=${id} 地址0x28(40) = 128`);
   }
-
   // ====== UI 状态 ======
   function setUiConnected(connected) {
     btnConnect.disabled = connected;
@@ -607,6 +713,10 @@
 
     btnScanStart.disabled = !connected;
     btnScanStop.disabled = true;
+
+    btnPosStart.disabled = !connected;
+    btnPosStop.disabled = true;
+    posStateEl.textContent = "实时位置：未运行";
 
     btnCenter.disabled = !connected;
     btnResetState.disabled = !connected;
@@ -660,6 +770,7 @@
       // 停止后台任务
       pipelineAbort.abort = true;
       scanAbort.abort = true;
+      posAbort.abort = true;
       pipelineRunning = false;
       scanRunning = false;
 
@@ -702,6 +813,38 @@
     }
   };
 
+  // —— 中值校准（写 40 号地址 = 128）——
+  btnCenter.onclick = async () => {
+    try {
+      const id = Number(actIdEl.value);
+      if (!Number.isFinite(id) || id < 0 || id > 253) throw new Error("目标 ID 不合法");
+      lockControlsBusy(true);
+      log(`写入中值校准：ID=${id}，写 0x28(40)=128`);
+      await writeMiddleCalibrate(id);
+      log("✅ 已写入中值校准");
+    } catch (e) {
+      log(`中值校准失败: ${e.message || e}`);
+    } finally {
+      lockControlsBusy(false);
+    }
+  };
+
+  // —— 状态重置（RESET 0x0A）——
+  btnResetState.onclick = async () => {
+    try {
+      const id = Number(actIdEl.value);
+      if (!Number.isFinite(id) || id < 0 || id > 253) throw new Error("目标 ID 不合法");
+      lockControlsBusy(true);
+      log(`发送 RESET(0x0A)（ID=${id}）`);
+      await resetState(id);
+      log("✅ 已发送状态重置");
+    } catch (e) {
+      log(`状态重置失败: ${e.message || e}`);
+    } finally {
+      lockControlsBusy(false);
+    }
+  };
+
   btnPipeStart.onclick = async () => {
     try {
       if (!pipeConfirmOneEl.checked) {
@@ -739,73 +882,66 @@
     log("请求中断流水线...");
   };
 
-  btnScanStart.onclick = async () => {
-    try {
-      if (scanRunning || pipelineRunning) {
-        alert("请先停止正在运行的任务（流水线/扫描）");
-        return;
-      }
-      scanRunning = true;
-      scanAbort = { abort: false };
-      btnScanStart.disabled = true;
-      btnScanStop.disabled = false;
-      lockControlsBusy(true);
-
-      await runScan(scanStartEl.value, scanEndEl.value, scanPeriodEl.value, scanAbort);
-    } catch (e) {
-      log(`扫描启动失败: ${e.message || e}`);
-    } finally {
-      scanRunning = false;
-      scanAbort.abort = true;
-      btnScanStart.disabled = !port;
-      btnScanStop.disabled = true;
-      lockControlsBusy(false);
+  btnScanStart.onclick = () => {
+    if (scanRunning || pipelineRunning || posLoopRunning) {
+      alert("请先停止正在运行的任务（流水线/扫描/实时位置）");
+      return;
     }
+    scanRunning = true;
+    scanAbort = { abort: false };
+    btnScanStart.disabled = true;
+    btnScanStop.disabled = false;
+    scanStateEl.textContent = "扫描中…";
+
+    runScan(scanStartEl.value, scanEndEl.value, scanPeriodEl.value, scanAbort)
+      .catch(e => log(`扫描异常: ${e.message || e}`))
+      .finally(() => {
+        scanRunning = false;
+        btnScanStart.disabled = !port;
+        btnScanStop.disabled = true;
+      });
   };
 
-  btnScanStop.onclick = async () => {
+  btnScanStop.onclick = () => {
+    if (!scanRunning) return;
     scanAbort.abort = true;
     scanRunning = false;
+    btnScanStart.disabled = !port;
     btnScanStop.disabled = true;
+    scanStateEl.textContent = "已停止";
   };
 
-  btnCenter.onclick = async () => {
-    try {
-      if (pipelineRunning || scanRunning) {
-        alert("请先停止流水线/扫描，再执行动作");
-        return;
-      }
-      lockControlsBusy(true);
-      await moveToCenter(actIdEl.value, actSpeedEl.value, actTimeEl.value);
-      log("✅ 已发送中置指令");
-    } catch (e) {
-      log(`中置失败: ${e.message || e}`);
-    } finally {
-      lockControlsBusy(false);
+  btnPosStart.onclick = () => {
+    if (posLoopRunning || pipelineRunning || scanRunning) {
+      alert("请先停止正在运行的任务（流水线/扫描/实时位置）");
+      return;
     }
-  };
-
-  btnResetState.onclick = async () => {
-    try {
-      if (pipelineRunning || scanRunning) {
-        alert("请先停止流水线/扫描，再执行动作");
-        return;
-      }
-      const id = Number(actIdEl.value);
-      lockControlsBusy(true);
-      log(`发送 RESET(0x0A)（ID=${id}）`);
-      await resetState(id);
-      log("✅ 已发送状态重置");
-    } catch (e) {
-      log(`状态重置失败: ${e.message || e}`);
-    } finally {
-      lockControlsBusy(false);
+    if (!scanMap.size) {
+      alert("请先扫描一次，或先启动扫描让它发现舵机 ID。");
+      return;
     }
+    posAbort = { abort: false };
+    btnPosStart.disabled = true;
+    btnPosStop.disabled = false;
+    posStateEl.textContent = "实时位置：运行中";
+    runPosLoop(posPeriodEl.value, posAbort)
+      .catch(e => log(`实时位置异常: ${e.message || e}`))
+      .finally(() => {
+        btnPosStart.disabled = !port;
+        btnPosStop.disabled = true;
+        posStateEl.textContent = "实时位置：已停止";
+      });
   };
 
-  // 初始
-  setUiConnected(false);
-})();
+  btnPosStop.onclick = () => {
+    if (!posLoopRunning) return;
+    posAbort.abort = true;
+    btnPosStart.disabled = !port;
+    btnPosStop.disabled = true;
+    posStateEl.textContent = "实时位置：已停止";
+  };
+
+
 </script>
 </body>
 </html>
