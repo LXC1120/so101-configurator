@@ -14,18 +14,16 @@
     label{display:flex;gap:8px;align-items:center}
     input,select,button{font:inherit}
     input,select{padding:8px 10px;border-radius:10px;border:1px solid rgba(127,127,127,.35)}
-    input{width:140px}
-    select{min-width:180px}
+    input{width:120px}
     button{padding:10px 14px;border-radius:12px;border:1px solid rgba(127,127,127,.35);cursor:pointer}
     button:disabled{opacity:.45;cursor:not-allowed}
+    .small{font-size:12px;opacity:.85}
+    .pill{display:inline-block;padding:2px 10px;border:1px solid rgba(127,127,127,.35);border-radius:999px}
     .ok{color:#0a7a2f}
     .warn{color:#b45309}
     .bad{color:#b91c1c}
     pre{background:rgba(0,0,0,.85);color:#e8eefc;padding:12px;border-radius:14px;overflow:auto;max-height:360px}
-    code{background:rgba(127,127,127,.18);padding:2px 6px;border-radius:8px}
-    .small{font-size:12px;opacity:.86}
-    .pill{display:inline-block;padding:2px 10px;border:1px solid rgba(127,127,127,.35);border-radius:999px}
-    .grid{display:grid;grid-template-columns:1fr;gap:10px}
+    .grid{display:grid;grid-template-columns:1fr;gap:12px}
     @media (min-width:900px){.grid{grid-template-columns:1fr 1fr}}
     table{border-collapse:collapse;width:100%}
     th,td{border-bottom:1px solid rgba(127,127,127,.25);padding:6px 8px;text-align:left;font-size:13px}
@@ -33,10 +31,10 @@
   </style>
 </head>
 <body>
-  <h1>舵机配置工具（Web Serial / Chrome）</h1>
+  <h1>舵机配置工具（Web Serial / 桌面 Chrome）</h1>
   <div class="small">
     <span class="pill" id="statusPill">未连接</span>
-    <span class="pill">协议：FF FF…（与原脚本一致）</span>
+    <span class="pill">建议：一次只接 1 个舵机；舵机需外接电源；TX/RX 交叉；GND 共地</span>
   </div>
 
   <div class="card">
@@ -45,171 +43,119 @@
         <button id="btnConnect">连接串口</button>
         <button id="btnDisconnect" disabled>断开</button>
       </div>
-      <label>波特率
-        <input id="baud" inputmode="numeric" value="1000000" />
-      </label>
+      <label>波特率 <input id="baud" inputmode="numeric" value="1000000"/></label>
     </div>
-    <p class="small warn" style="margin:10px 0 0">
-      Web Serial 仅在 <b>HTTPS</b>（或 <code>http://localhost</code>）可用；请使用 <b>桌面版</b> Chrome/Edge。
-    </p>
+    <p class="small warn" style="margin:10px 0 0">Web Serial 仅在 HTTPS（或 http://localhost）可用；请使用桌面版 Chrome/Edge。</p>
   </div>
 
   <div class="grid">
     <div class="card">
-      <h2>流水线自动配置 ID（插拔即可）</h2>
+      <h2>流水线配置（自动监控插拔）</h2>
       <div class="row">
-        <label>起始 ID
-          <input id="pipeStart" inputmode="numeric" min="1" max="253" value="1" />
-        </label>
-        <label>结束 ID
-          <input id="pipeEnd" inputmode="numeric" min="1" max="253" value="6" />
-        </label>
-        <label class="small" style="gap:10px">
-          <input id="pipeConfirmOne" type="checkbox" />
-          我确认任何时刻总线上只会有 <b>1 个</b> 舵机
-        </label>
+        <label>起始ID <input id="pipeStart" inputmode="numeric" value="1" /></label>
+        <label>结束ID <input id="pipeEnd" inputmode="numeric" value="6" /></label>
       </div>
       <div class="row" style="margin-top:10px">
         <button id="btnPipeStart" disabled>开始流水线</button>
         <button id="btnPipeStop" disabled>中断</button>
-        <span class="small" id="pipeState">未运行</span>
+        <span class="pill" id="pipeState">未运行</span>
       </div>
-      <p class="small warn" style="margin:10px 0 0">
-        逻辑：持续广播 PING 检测“插入”，检测到后按顺序写入 ID，并要求拔掉后再继续下一只。
-      </p>
+      <p class="small">点击“开始流水线”后，你只需要插拔舵机：检测到插入→按顺序写入→验证→等待拔掉→进入下一只。</p>
     </div>
 
     <div class="card">
-      <h2>单独改号（保持原脚本流程）</h2>
+      <h2>单独修改 ID</h2>
       <div class="row">
-        <label>目标新 ID（1-253）
-          <input id="newId" inputmode="numeric" min="1" max="253" value="1" />
-        </label>
-        <label class="small" style="gap:10px">
-          <input id="confirmOneServo" type="checkbox" />
-          我确认目前只连接了 <b>1 个</b> 舵机
-        </label>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <button id="btnPingBroadcast" disabled>Ping 广播(0xFE)</button>
+        <label>目标新ID <input id="newId" inputmode="numeric" value="1" /></label>
         <button id="btnDoChange" disabled>开始改号</button>
+        <button id="btnPingBroadcast" disabled>Ping 广播(0xFE)</button>
       </div>
+      <p class="small">流程：解锁→关扭力→写ID→上锁→验证。</p>
     </div>
-  </div>
 
-  <div class="grid">
     <div class="card">
-      <h2>扫描舵机（发现有哪些ID）</h2>
+      <h2>扫描舵机（发现在线 ID）</h2>
       <div class="row">
-        <label>扫描 ID 从
-          <input id="scanStart" inputmode="numeric" min="0" max="253" value="1" />
-        </label>
-        <label>到
-          <input id="scanEnd" inputmode="numeric" min="0" max="253" value="20" />
-        </label>
-        <label>扫描周期(ms)
-          <input id="scanPeriod" inputmode="numeric" value="200" />
-        </label>
+        <label>扫描起始 <input id="scanStart" inputmode="numeric" value="1"/></label>
+        <label>扫描结束 <input id="scanEnd" inputmode="numeric" value="20"/></label>
+        <label>周期ms <input id="scanPeriod" inputmode="numeric" value="800"/></label>
       </div>
       <div class="row" style="margin-top:10px">
         <button id="btnScanStart" disabled>开始扫描</button>
         <button id="btnScanStop" disabled>停止扫描</button>
-        <span class="small" id="scanState">未运行</span>
+        <span class="pill" id="scanState">未运行</span>
       </div>
-
-      <div class="row" style="margin-top:10px">
-        <label>位置刷新(ms)
-          <input id="posPeriod" inputmode="numeric" value="50" />
-        </label>
-        <button id="btnPosStart" disabled>开始实时位置</button>
-        <button id="btnPosStop" disabled>停止实时位置</button>
-        <span class="small" id="posState">实时位置：未运行</span>
-      </div>
-
-      <div style="margin-top:10px;overflow:auto;max-height:220px">
-        <table>
-          <thead><tr><th>ID</th><th>位置</th><th>速度</th><th>负载</th><th>电压</th><th>温度</th><th>更新时间</th></tr></thead>
-          <tbody id="scanTableBody"><tr><td colspan="7" class="small">（尚未扫描）</td></tr></tbody>
-        </table>
-      </div>
-      <p class="small" style="margin:10px 0 0">
-        读取：从地址 <code>0x38</code> 连续读取 8 字节（位置/速度/负载/电压/温度）。
-      </p>
+      <p class="small">扫描只负责“有哪些ID在线”。位置信息刷新在下面单独控制。</p>
     </div>
 
     <div class="card">
-      <h2>中值校准 / 状态重置</h2>
+      <h2>实时位置（可开关）</h2>
       <div class="row">
-        <label>目标舵机 ID
-          <input id="actId" inputmode="numeric" min="0" max="253" value="1" />
-        </label>
+        <label>刷新ms <input id="posPeriod" inputmode="numeric" value="50"/></label>
+        <button id="btnPosStart" disabled>开始实时位置</button>
+        <button id="btnPosStop" disabled>停止</button>
+        <span class="pill" id="posState">未运行</span>
       </div>
-      <div class="row" style="margin-top:10px">
-        <button id="btnCenter" disabled>写40=128（中值校准）</button>
-        <button id="btnResetState" disabled>状态重置(RESET 0x0A)</button>
-      </div>
-      <p class="small warn" style="margin:10px 0 0">
-        中值校准：按你的需求向 <code>0x28</code>（40号地址）写入 <code>128</code>；状态重置使用指令 <code>0x0A</code>（无参数）。
-      </p>
+      <p class="small">对“扫描到的在线舵机列表”进行位置刷新（更快的做法是 SYNC READ，后续可再加）。</p>
     </div>
+
+    <div class="card">
+      <h2>动作工具</h2>
+      <div class="row">
+        <label>目标ID <input id="actId" inputmode="numeric" value="1"/></label>
+        <button id="btnMiddle" disabled>写 0x28(40)=128（中值校准）</button>
+        <button id="btnResetState" disabled>状态重置 RESET(0x0A)</button>
+      </div>
+      <p class="small">你说的“重置中置位”按你的定义实现为：写 40 号地址=128。</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>在线舵机列表</h2>
+    <table>
+      <thead><tr><th>ID</th><th>在线</th><th>位置</th><th>速度</th><th>负载</th><th>电压</th><th>温度</th><th>更新时间</th></tr></thead>
+      <tbody id="scanTableBody"></tbody>
+    </table>
   </div>
 
   <div class="card">
     <h2>日志</h2>
     <pre id="log"></pre>
     <div class="row small" style="justify-content:space-between;margin-top:10px">
-      <span>提示：浏览器会弹窗让你选择串口设备，这是正常的权限机制。</span>
+      <span>提示：浏览器会弹窗让你选择串口设备，这是正常权限机制。</span>
       <button id="btnClearLog">清空日志</button>
     </div>
   </div>
 
 <script>
-
 (() => {
-  // ====== 常量：与原脚本一致 ======
-  const BROADCAST_ID = 0xFE;   // 254
-  const ADDR_ID      = 0x05;   // ID 地址
-  const ADDR_LOCK    = 0x37;   // 锁地址
-  const ADDR_TORQUE  = 0x28;   // 扭力开关
+  // ====== 常量（与你脚本一致）======
+  const BROADCAST_ID = 0xFE;
+  const ADDR_ID     = 0x05;
+  const ADDR_LOCK   = 0x37;
+  const ADDR_TORQUE = 0x28; // 40
 
-  // 状态查询首地址 0x38：位置/速度/负载/电压/温度（共8字节）
-  const ADDR_PRESENT = 0x38;
-  const LEN_PRESENT  = 0x08;
+  // 状态
+  let port=null, writer=null, reader=null, readLoopRunning=false;
+  let rxBuf=[];
 
-  // 目标位置首地址 0x2A：位置(2) + 时间(2) + 速度(2)
-  const ADDR_GOAL    = 0x2A;
+  // 在线设备表：id -> {online, pos, spd, load, volt, temp, ts}
+  const devices = new Map(); // 只维护扫描过/发现的
 
-  // ====== 状态 ======
-  let port = null;
-  let writer = null;
-  let reader = null;
-  let readLoopRunning = false;
-  let rxBuf = [];
-
-  let pipelineRunning = false;
-  let pipelineAbort = { abort: false };
-
-  let scanRunning = false;
-  let scanAbort = { abort: false };
-  const scanMap = new Map();
-
-  // ====== UI ======
+  // UI
   const logEl = document.getElementById('log');
   const statusPill = document.getElementById('statusPill');
 
   const btnConnect = document.getElementById('btnConnect');
   const btnDisconnect = document.getElementById('btnDisconnect');
-  const btnPingBroadcast = document.getElementById('btnPingBroadcast');
-  const btnDoChange = document.getElementById('btnDoChange');
-  const btnClearLog = document.getElementById('btnClearLog');
-
   const baudEl = document.getElementById('baud');
+
   const newIdEl = document.getElementById('newId');
-  const confirmOneServoEl = document.getElementById('confirmOneServo');
+  const btnDoChange = document.getElementById('btnDoChange');
+  const btnPingBroadcast = document.getElementById('btnPingBroadcast');
 
   const pipeStartEl = document.getElementById('pipeStart');
   const pipeEndEl = document.getElementById('pipeEnd');
-  const pipeConfirmOneEl = document.getElementById('pipeConfirmOne');
   const btnPipeStart = document.getElementById('btnPipeStart');
   const btnPipeStop = document.getElementById('btnPipeStop');
   const pipeStateEl = document.getElementById('pipeState');
@@ -220,37 +166,34 @@
   const btnScanStart = document.getElementById('btnScanStart');
   const btnScanStop = document.getElementById('btnScanStop');
   const scanStateEl = document.getElementById('scanState');
+
   const posPeriodEl = document.getElementById('posPeriod');
   const btnPosStart = document.getElementById('btnPosStart');
   const btnPosStop = document.getElementById('btnPosStop');
   const posStateEl = document.getElementById('posState');
+
   const scanTableBody = document.getElementById('scanTableBody');
 
   const actIdEl = document.getElementById('actId');
-  const actSpeedEl = document.getElementById('actSpeed');
-  const actTimeEl = document.getElementById('actTime');
-  const btnCenter = document.getElementById('btnCenter');
+  const btnMiddle = document.getElementById('btnMiddle');
   const btnResetState = document.getElementById('btnResetState');
+
+  const btnClearLog = document.getElementById('btnClearLog');
 
   function setStatus(text, kind="") {
     statusPill.textContent = text;
     statusPill.className = "pill " + kind;
   }
-
   function log(msg) {
     const t = new Date().toLocaleTimeString();
     logEl.textContent += `[${t}] ${msg}\n`;
     logEl.scrollTop = logEl.scrollHeight;
   }
+  function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
-  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-  function u16le(lo, hi){ return (lo & 0xFF) | ((hi & 0xFF) << 8); }
-  function toHex(b){ return `0x${(b & 0xFF).toString(16).padStart(2,'0')}`; }
-
-  // ====== 协议：校验与组包（checksum = (~sum(data)) & 0xFF）======
+  // ====== 协议：校验与组包 ======
   function calcChecksum(dataBytes) {
-    let sum = 0;
+    let sum=0;
     for (const b of dataBytes) sum += (b & 0xFF);
     return (~sum) & 0xFF;
   }
@@ -259,115 +202,80 @@
     return new Uint8Array([0xFF, 0xFF, ...dataBytes, chk]);
   }
 
-  async function ensureWriter() {
+  async function ensureWriter(){
     if (!port) throw new Error("未连接串口");
     if (!writer) writer = port.writable.getWriter();
   }
-
-  async function writeRaw(u8) {
+  async function writeRaw(u8){
     await ensureWriter();
     await writer.write(u8);
   }
 
   // ====== 读取：缓存收到的字节 ======
-  async function startReadLoop() {
+  async function startReadLoop(){
     reader = port.readable.getReader();
     readLoopRunning = true;
     rxBuf = [];
     (async () => {
-      try {
-        while (readLoopRunning) {
-          const { value, done } = await reader.read();
+      try{
+        while (readLoopRunning){
+          const {value, done} = await reader.read();
           if (done) break;
-          if (value && value.length) {
+          if (value && value.length){
             for (const b of value) rxBuf.push(b);
             if (rxBuf.length > 8192) rxBuf = rxBuf.slice(-4096);
           }
         }
-      } catch (e) {
+      } catch(e){
         log(`读取异常: ${e.message || e}`);
       }
     })();
   }
-
-  async function stopReadLoop() {
+  async function stopReadLoop(){
     readLoopRunning = false;
-    if (reader) {
-      try { await reader.cancel(); } catch {}
-      try { reader.releaseLock(); } catch {}
+    if (reader){
+      try{ await reader.cancel(); } catch{}
+      try{ reader.releaseLock(); } catch{}
       reader = null;
     }
-    rxBuf = [];
+    rxBuf=[];
   }
 
   // ====== 帧解析：从 rxBuf 中抽取一帧 ======
-  function tryPopFrameFromRxBuf() {
+  function tryPopFrameFromRxBuf(){
     // 帧格式：FF FF ID LEN ERROR ... CHK
-    // LEN = 参数个数 + 2（ERROR + CHK）
-    for (let i = 0; i + 6 <= rxBuf.length; i++) {
-      if (rxBuf[i] !== 0xFF || rxBuf[i+1] !== 0xFF) continue;
+    for (let i=0; i+6<=rxBuf.length; i++){
+      if (rxBuf[i]!==0xFF || rxBuf[i+1]!==0xFF) continue;
       const id = rxBuf[i+2];
       const len = rxBuf[i+3];
       const total = 2 + 1 + 1 + len; // FF FF + ID + LEN + (len bytes: ERROR..CHK)
-      if (i + total > rxBuf.length) return null; // 不够长
-      const frame = rxBuf.slice(i, i + total);
-      rxBuf = rxBuf.slice(i + total);
-      return { id, len, frame };
+      if (i+total > rxBuf.length) return null;
+      const frame = rxBuf.slice(i, i+total);
+      rxBuf = rxBuf.slice(i+total);
+      return {id, len, frame};
     }
+    // 如果没找到帧头，丢弃一部分缓冲避免无限增长
+    if (rxBuf.length > 4096) rxBuf = rxBuf.slice(-1024);
     return null;
   }
 
-  async function waitFrame(filterFn, timeoutMs = 180) {
-    const start = performance.now();
-    while (performance.now() - start < timeoutMs) {
-      const fr = tryPopFrameFromRxBuf();
-      if (fr && (!filterFn || filterFn(fr))) return fr;
-      await sleep(5);
-    }
-    return null;
-  }
-
-  // ====== 命令：ping / read / write ======
-  async function ping(targetId, timeoutMs = 150) {
-    // FF FF ID 02 01 CHK
+  // ====== 基本指令 ======
+  async function ping(targetId, timeoutMs=120){
     const data = [targetId & 0xFF, 0x02, 0x01];
     const pkt = buildPacket(data);
     rxBuf = [];
     await writeRaw(pkt);
 
-    // 只要收到任意回包（>=6字节）就认为在线
-    const fr = await waitFrame(() => true, timeoutMs);
-    return !!fr;
-  }
-
-  async function readData(targetId, address, length, timeoutMs = 220) {
-    // FF FF ID 04 02 ADDR LEN CHK
-    const data = [targetId & 0xFF, 0x04, 0x02, address & 0xFF, length & 0xFF];
-    const pkt = buildPacket(data);
-    rxBuf = [];
-    await writeRaw(pkt);
-    const fr = await waitFrame((f) => f.id === (targetId & 0xFF), timeoutMs);
-    if (!fr) return null;
-
-    // frame = [FF FF ID LEN ERROR ... CHK]
-    const frame = fr.frame;
-    const error = frame[4];
-    const paramsLen = fr.len - 2; // 去掉 ERROR 和 CHK
-    const params = frame.slice(5, 5 + paramsLen);
-
-    // 轻量校验（可选）：校验和 = ~(ID + LEN + ERROR + PARAMS)
-    const chk = frame[5 + paramsLen];
-    const calc = calcChecksum([frame[2], frame[3], error, ...params]);
-    if (chk !== calc) {
-      // 不直接报错，避免不同固件差异导致误判
-      log(`⚠️ 校验和不一致：recv=${toHex(chk)} calc=${toHex(calc)}`);
+    const start = performance.now();
+    while (performance.now() - start < timeoutMs){
+      const fr = tryPopFrameFromRxBuf();
+      if (fr) return true;
+      await sleep(5);
     }
-
-    return { id: fr.id, error, params };
+    return false;
   }
 
-  async function writeReg(targetId, address, value) {
-    // FF FF ID 04 03 ADDR VAL CHK
+  async function writeReg(targetId, address, value){
     const data = [targetId & 0xFF, 0x04, 0x03, address & 0xFF, value & 0xFF];
     const pkt = buildPacket(data);
     rxBuf = [];
@@ -375,390 +283,306 @@
     await sleep(50);
   }
 
-  async function writeBytes(targetId, address, bytes) {
-    // WRITE DATA: LEN = N + 3（Instruction + Addr + N bytes + CHK）
-    const n = bytes.length;
-    const len = (n + 3) & 0xFF;
-    const data = [targetId & 0xFF, len, 0x03, address & 0xFF, ...bytes.map(b => b & 0xFF)];
+  async function readReg(targetId, address, size, timeoutMs=80){
+    // READ DATA: ID LEN INST(0x02) ADDR SIZE
+    const data = [targetId & 0xFF, 0x04, 0x02, address & 0xFF, size & 0xFF];
     const pkt = buildPacket(data);
     rxBuf = [];
     await writeRaw(pkt);
+
+    const start = performance.now();
+    while (performance.now() - start < timeoutMs){
+      const fr = tryPopFrameFromRxBuf();
+      if (!fr) { await sleep(2); continue; }
+      // fr.frame: [FF,FF,ID,LEN,ERR, ...params, CHK]
+      const frame = fr.frame;
+      const err = frame[4];
+      if (err !== 0) return null;
+      const paramsLen = frame[3] - 2; // LEN - (ERR + CHK)
+      const params = frame.slice(5, 5 + paramsLen);
+      return params;
+    }
+    return null;
+  }
+
+  // ====== 单次改号（严格按你的脚本顺序）======
+  async function changeIdLikeScript(newId){
+    newId = Number(newId);
+    if (!(newId>=1 && newId<=253)) throw new Error("ID 范围 1~253");
+
+    log(`开始改号：目标新 ID=${newId}`);
+
+    // A 解锁（广播）
+    await writeReg(BROADCAST_ID, ADDR_LOCK, 0);
+    // B 关扭力（广播）
+    await writeReg(BROADCAST_ID, ADDR_TORQUE, 0);
+    // C 写ID（广播）
+    await writeReg(BROADCAST_ID, ADDR_ID, newId);
+    await sleep(150);
+    // D 上锁（对新ID）
+    await writeReg(newId, ADDR_LOCK, 1);
+
+    // 验证
+    log(`验证：PING ID=${newId} ...`);
+    let ok = await ping(newId, 180);
+    if (!ok){
+      await sleep(500);
+      ok = await ping(newId, 180);
+    }
+    if (!ok) throw new Error("验证失败（请检查供电/线序/波特率）");
+    log("✅ 改号成功");
+  }
+
+  // ====== 流水线：自动监控插拔 ======
+  let pipeRunning=false;
+  let pipeTarget=1, pipeStart=1, pipeEnd=6;
+  let pipeState="IDLE"; // WAIT_INSERT | PROGRAMMING | WAIT_REMOVE
+  let pipeLastSeen=false;
+  let pipeLostSince=null;
+  let pipeTimer=null;
+
+  async function pipeTick(){
+    if (!pipeRunning) return;
+
+    if (pipeState==="WAIT_INSERT"){
+      const seen = await ping(BROADCAST_ID, 120);
+      if (seen && !pipeLastSeen){
+        pipeLastSeen = true;
+        pipeState = "PROGRAMMING";
+        pipeStateEl.textContent = `检测到插入，配置 ID=${pipeTarget}...`;
+      } else if (!seen){
+        pipeLastSeen = false;
+      }
+      return;
+    }
+
+    if (pipeState==="PROGRAMMING"){
+      await changeIdLikeScript(pipeTarget);
+      pipeState = "WAIT_REMOVE";
+      pipeLostSince = null;
+      pipeStateEl.textContent = `已写入 ID=${pipeTarget}，请拔掉舵机...`;
+      return;
+    }
+
+    if (pipeState==="WAIT_REMOVE"){
+      const online = await ping(pipeTarget, 120);
+      if (online){
+        pipeLostSince = null;
+      } else {
+        if (pipeLostSince==null) pipeLostSince = performance.now();
+        else if (performance.now() - pipeLostSince >= 1000){
+          // 确认拔掉
+          if (pipeTarget >= pipeEnd){
+            log(`🎉 流水线完成：${pipeStart}~${pipeEnd}`);
+            pipeStateEl.textContent = `完成：${pipeStart}~${pipeEnd}`;
+            stopPipeline();
+            return;
+          }
+          pipeTarget += 1;
+          pipeState = "WAIT_INSERT";
+          pipeLastSeen = false;
+          pipeStateEl.textContent = `等待插入下一只，目标 ID=${pipeTarget}...`;
+          log(`请插入下一只舵机，目标 ID=${pipeTarget}`);
+        }
+      }
+    }
+  }
+
+  function startPipeline(){
+    pipeStart = Number(pipeStartEl.value);
+    pipeEnd = Number(pipeEndEl.value);
+    if (!Number.isFinite(pipeStart) || !Number.isFinite(pipeEnd)) { alert("ID 范围不合法"); return; }
+    if (pipeStart<1 || pipeEnd>253 || pipeStart>pipeEnd){ alert("ID 范围应在 1~253 且 起始<=结束"); return; }
+
+    pipeRunning = true;
+    pipeTarget = pipeStart;
+    pipeState = "WAIT_INSERT";
+    pipeLastSeen = false;
+    pipeLostSince = null;
+
+    btnPipeStart.disabled = true;
+    btnPipeStop.disabled = false;
+    pipeStateEl.textContent = `运行中：等待插入第一只（目标 ID=${pipeTarget}）...`;
+    log(`流水线启动：将配置 ID=${pipeStart}~${pipeEnd}。请插入第一只舵机...`);
+
+    if (pipeTimer) clearInterval(pipeTimer);
+    pipeTimer = setInterval(() => {
+      pipeTick().catch(e => {
+        log(`流水线异常: ${e.message || e}`);
+        pipeStateEl.textContent = "异常停止";
+        stopPipeline();
+      });
+    }, 120);
+  }
+
+  function stopPipeline(){
+    pipeRunning = false;
+    if (pipeTimer){ clearInterval(pipeTimer); pipeTimer=null; }
+    btnPipeStart.disabled = !port;
+    btnPipeStop.disabled = true;
+    if (pipeStateEl.textContent.startsWith("完成")) return;
+    pipeStateEl.textContent = "未运行";
+  }
+
+  // ====== 扫描：只发现在线 ID ======
+  let scanRunning=false, scanTimer=null;
+
+  function renderTable(){
+    const ids = Array.from(devices.keys()).sort((a,b)=>a-b);
+    scanTableBody.innerHTML = ids.map(id=>{
+      const d = devices.get(id);
+      const online = d.online ? "✅" : "";
+      const pos = d.pos ?? "";
+      const spd = d.spd ?? "";
+      const load = d.load ?? "";
+      const volt = d.volt ?? "";
+      const temp = d.temp ?? "";
+      const ts = d.ts ? new Date(d.ts).toLocaleTimeString() : "";
+      return `<tr>
+        <td>${id}</td><td>${online}</td>
+        <td>${pos}</td><td>${spd}</td><td>${load}</td><td>${volt}</td><td>${temp}</td><td>${ts}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  async function scanOnce(){
+    const start = Number(scanStartEl.value);
+    const end = Number(scanEndEl.value);
+    if (!Number.isFinite(start)||!Number.isFinite(end)||start<1||end>253||start>end) return;
+
+    for (let id=start; id<=end; id++){
+      const ok = await ping(id, 40);
+      if (!devices.has(id)) devices.set(id, {online:false});
+      const d = devices.get(id);
+      d.online = ok;
+      if (!ok){
+        // 离线时不清空上次值，方便观察
+      }
+    }
+    renderTable();
+  }
+
+  function startScan(){
+    scanRunning = true;
+    btnScanStart.disabled = true;
+    btnScanStop.disabled = false;
+    scanStateEl.textContent = "扫描：运行中";
+    const period = Math.max(200, Number(scanPeriodEl.value)||800);
+    scanOnce().catch(()=>{});
+    scanTimer = setInterval(() => scanOnce().catch(()=>{}), period);
+  }
+  function stopScan(){
+    scanRunning=false;
+    if (scanTimer){ clearInterval(scanTimer); scanTimer=null; }
+    btnScanStart.disabled = !port;
+    btnScanStop.disabled = true;
+    scanStateEl.textContent = "扫描：已停止";
+  }
+
+  // ====== 实时位置：可开关（基于已扫描到的在线设备）======
+  let posRunning=false, posTimer=null;
+
+  async function refreshPositionsOnce(){
+    // 读 0x38 起 8 字节：pos(2) spd(2) load(2) volt(1) temp(1)
+    const onlineIds = Array.from(devices.keys()).filter(id => devices.get(id).online);
+    for (const id of onlineIds){
+      const params = await readReg(id, 0x38, 8, 35);
+      if (!params || params.length < 8) continue;
+
+      const pos = params[0] | (params[1]<<8);
+      const spd = params[2] | (params[3]<<8);
+      const load = params[4] | (params[5]<<8);
+      const volt = params[6];
+      const temp = params[7];
+
+      const d = devices.get(id);
+      d.pos = pos;
+      d.spd = spd;
+      d.load = load;
+      d.volt = volt;
+      d.temp = temp;
+      d.ts = Date.now();
+    }
+    renderTable();
+  }
+
+  function startPos(){
+    posRunning=true;
+    btnPosStart.disabled = true;
+    btnPosStop.disabled = false;
+    posStateEl.textContent = "实时位置：运行中";
+    const period = Math.max(20, Number(posPeriodEl.value)||50);
+    refreshPositionsOnce().catch(()=>{});
+    posTimer = setInterval(() => refreshPositionsOnce().catch(()=>{}), period);
+  }
+  function stopPos(){
+    posRunning=false;
+    if (posTimer){ clearInterval(posTimer); posTimer=null; }
+    btnPosStart.disabled = !port;
+    btnPosStop.disabled = true;
+    posStateEl.textContent = "实时位置：已停止";
+  }
+
+  // ====== 动作工具 ======
+  async function writeMiddleCalibrate(id){
+    // 按你的定义：写 0x28(40)=128
+    await writeReg(id, 0x28, 128);
     await sleep(50);
   }
 
-  async function resetState(targetId) {
-    // RESET: LEN=0x02, INST=0x0A, no params
-    const data = [targetId & 0xFF, 0x02, 0x0A];
+  async function resetState(id){
+    // RESET 指令 0x0A：FF FF ID 02 0x0A CHK
+    const data = [id & 0xFF, 0x02, 0x0A];
     const pkt = buildPacket(data);
     rxBuf = [];
     await writeRaw(pkt);
     await sleep(80);
   }
 
-  // ====== 单独改号：严格保持原脚本顺序 ======
-  async function changeId(newId) {
-    newId = Number(newId);
-    if (!(newId >= 1 && newId <= 253)) throw new Error("ID 需在 1~253");
+  // ====== UI 绑定 ======
+  btnClearLog.onclick = () => { logEl.textContent = ""; };
 
-    log(`开始：目标新 ID = ${newId}`);
-
-    log(`PING 广播(0xFE) ...`);
-    const seen = await ping(BROADCAST_ID);
-    log(seen ? "检测到回包（广播）" : "未检测到回包（某些设备可能不回广播 PING，继续尝试写入）");
-
-    log(`A) 解锁：写 ${toHex(ADDR_LOCK)} = 0（广播）`);
-    await writeReg(BROADCAST_ID, ADDR_LOCK, 0);
-
-    log(`B) 关扭力：写 ${toHex(ADDR_TORQUE)} = 0（广播）`);
-    await writeReg(BROADCAST_ID, ADDR_TORQUE, 0);
-
-    log(`C) 写ID：写 ${toHex(ADDR_ID)} = ${newId}（广播）`);
-    await writeReg(BROADCAST_ID, ADDR_ID, newId);
-    await sleep(150);
-
-    log(`D) 上锁：写 ${toHex(ADDR_LOCK)} = 1（ID=${newId}）`);
-    await writeReg(newId, ADDR_LOCK, 1);
-
-    log(`验证：PING ID=${newId} ...`);
-    let ok = await ping(newId, 180);
-    if (!ok) {
-      log("第一次验证超时，0.5s 后重试...");
-      await sleep(500);
-      ok = await ping(newId, 180);
-    }
-
-    if (ok) {
-      log("✅ 修改成功！");
-      setStatus(`已连接（最近成功改号：${newId}）`, "ok");
-    } else {
-      log("❌ 修改失败：请检查外接电源、线序（TX/RX/GND）、波特率是否一致。\n（如果总线上不止 1 个舵机，也会导致异常。）");
-      throw new Error("验证失败");
-    }
-  }
-
-  // ====== 流水线：持续检测插入 -> 写ID -> 等待拔出 ======
-  async function runPipeline(startId, endId, abortRef) {
-    const s = Number(startId), e = Number(endId);
-    if (!(s >= 0 && s <= 253 && e >= 0 && e <= 253 && s <= e)) throw new Error("起始/结束 ID 不合法");
-
-    pipeStateEl.textContent = `运行中：等待插入（目标 ${s}..${e}）`;
-    log(`流水线开始：范围 ${s}..${e}`);
-
-    let targetId = s;
-
-    // 说明：用广播 PING 作为“插入检测”。若总线上有多个舵机会同时应答导致冲突。
-    while (!abortRef.abort && targetId <= e) {
-      pipeStateEl.textContent = `等待插入：目标 ID=${targetId}`;
-
-      // 1) 等待插入（广播 ping 成功）
-      while (!abortRef.abort) {
-        const ok = await ping(BROADCAST_ID, 180);
-        if (ok) break;
-        await sleep(80);
-      }
-      if (abortRef.abort) break;
-
-      log(`>> 检测到舵机插入，开始写入 ID=${targetId}`);
-
-      try {
-        // A 解锁（写 0 允许保存）
-        await writeReg(BROADCAST_ID, ADDR_LOCK, 0);
-        // B 关扭力（写 0）
-        await writeReg(BROADCAST_ID, ADDR_TORQUE, 0);
-        // C 写 ID（地址 0x05）
-        await writeReg(BROADCAST_ID, ADDR_ID, targetId);
-        await sleep(160); // 等待 EPROM 写入
-        // D 上锁（写 1）
-        await writeReg(targetId, ADDR_LOCK, 1);
-
-        // E 验证
-        const ok = await ping(targetId, 220);
-        if (!ok) throw new Error("验证失败：PING 不通（请确认供电/只接 1 个舵机）");
-
-        log(`✅ 写入成功：ID=${targetId}`);
-      } catch (err) {
-        log(`❌ 写入异常：${err?.message || err}`);
-        // 写入失败后不要自动推进 ID，等待用户拔插后重试
-      }
-
-      // 2) 等待断开：对“目标ID”持续 ping 不通 >= 1000ms 才认为拔掉
-      log("等待拔掉舵机…");
-      let lostSince = null;
-      while (!abortRef.abort) {
-        const ok = await ping(targetId, 120);
-        if (ok) {
-          lostSince = null;
-        } else {
-          if (lostSince === null) lostSince = performance.now();
-          if (performance.now() - lostSince >= 1000) break;
-        }
-        await sleep(80);
-      }
-      if (abortRef.abort) break;
-
-      log("已检测到断开 ✂️");
-      await sleep(150);
-
-      targetId += 1;
-    }
-
-    const done = !abortRef.abort;
-    pipeStateEl.textContent = done ? `完成：已配置至 ${Math.min(e, targetId - 1)}` : "已中断";
-    log(done ? "🎉 流水线完成" : "⏹️ 流水线已中断");
-  }      if (abortRef.abort) break;
-
-      log(`>> 检测到舵机插入，开始写入 ID=${targetId}`);
-
-      try {
-        // A 解锁
-        await writeReg(BROADCAST_ID, ADDR_LOCK, 0);
-        // B 关扭力
-        await writeReg(BROADCAST_ID, ADDR_TORQUE, 0);
-        // C 写ID
-        await writeReg(BROADCAST_ID, ADDR_ID, targetId);
-        await sleep(150);
-        // D 上锁
-        await writeReg(targetId, ADDR_LOCK, 1);
-
-        // 验证
-        let ok = await ping(targetId, 220);
-        if (!ok) {
-          await sleep(500);
-          ok = await ping(targetId, 220);
-        }
-        if (!ok) {
-          log(`❌ 写入后验证失败（ID=${targetId}），请检查电源/线序/是否同时连接多舵机`);
-          // 失败时：要求拔掉再试同一个 ID
-          pipeStateEl.textContent = `失败：请拔掉舵机后重试（目标 ID=${targetId}）`;
-        } else {
-          log(`✅ 写入成功：ID=${targetId}`);
-          targetId += 1;
-        }
-      } catch (e) {
-        log(`流水线写入异常: ${e.message || e}`);
-      }
-
-      // 2) 等待拔出：连续 1s ping 不通
-      pipeStateEl.textContent = `请拔掉舵机...（继续目标 ID=${targetId}）`;
-      let lostSince = null;
-      while (!abortRef.abort) {
-        // 这里用广播 ping 来判定总线上是否还有舵机
-        const ok = await ping(BROADCAST_ID, 180);
-        if (ok) {
-          lostSince = null;
-        } else {
-          if (lostSince === null) lostSince = performance.now();
-          if (performance.now() - lostSince >= 1000) break;
-        }
-        await sleep(100);
-      }
-      if (abortRef.abort) break;
-
-      log("已检测到断开 ✂️");
-      await sleep(200);
-    }
-
-    const done = !abortRef.abort;
-    pipeStateEl.textContent = done ? `完成：已配置到 ${Math.min(endId, startId + (endId-startId))}` : "已中断";
-    log(done ? "🎉 流水线完成" : "⏹️ 流水线已中断");
-  }
-
-  // ====== 扫描：轮询范围内在线舵机并读状态 ======
-  
-  async function syncRead(address, length, ids, timeoutMs = 180) {
-    // SYNC READ 指令 0x82：FF FF FE (N+4) 82 addr len id... chk
-    if (!ids || !ids.length) return new Map();
-    const params = [address & 0xFF, length & 0xFF, ...ids.map(n => n & 0xFF)];
-    const pkt = buildPacket(BROADCAST_ID, 0x82, params);
-    await writeRaw(pkt);
-
-    const out = new Map();
-    for (const id of ids) {
-      const frame = await waitFrame(id, timeoutMs);
-      if (!frame) continue;
-      // frame = [FF FF ID LEN ERROR ... CHK]
-      const err = frame[4];
-      if (err !== 0) continue;
-      const data = frame.slice(5, 5 + length);
-      out.set(id, data);
-    }
-    return out;
-  }
-
-  // ====== 实时位置循环（与扫描分开） ======
-  let posLoopRunning = false;
-  let posAbort = { abort: false };
-
-  async function runPosLoop(periodMs, abortRef) {
-    const p = Math.max(20, Number(periodMs) || 50);
-    posLoopRunning = true;
-    posAbort = abortRef;
-    while (!abortRef.abort) {
-      const ids = Array.from(scanMap.keys()).sort((a,b)=>a-b);
-      if (ids.length) {
-        // 一次性同步读 0x38 起 8 字节：位置/速度/负载/电压/温度
-        const dataMap = await syncRead(ADDR_PRESENT, LEN_PRESENT, ids, 160);
-        const now = Date.now();
-        for (const [id, data] of dataMap.entries()) {
-          const pos = u16le(data[0], data[1]);
-          const spd = u16le(data[2], data[3]);
-          const load = u16le(data[4], data[5]);
-          const vol = data[6];
-          const tmp = data[7];
-          scanMap.set(id, { id, pos, speed: spd, load, voltage: vol, temp: tmp, ts: now });
-        }
-        renderScanTable();
-      }
-      await sleep(p);
-    }
-    posLoopRunning = false;
-  }
-function renderScanTable() {
-    const rows = Array.from(scanMap.values()).sort((a,b)=>a.id-b.id);
-    if (!rows.length) {
-      scanTableBody.innerHTML = `<tr><td colspan="7" class="small">（未发现舵机）</td></tr>`;
-      return;
-    }
-    scanTableBody.innerHTML = rows.map(r => {
-      const t = new Date(r.ts).toLocaleTimeString();
-      const v = (r.voltage != null) ? (r.voltage/10).toFixed(1) + 'V' : '-';
-      const temp = (r.temp != null) ? r.temp + '°C' : '-';
-      return `<tr>
-        <td>${r.id}</td>
-        <td>${r.pos ?? '-'}</td>
-        <td>${r.speed ?? '-'}</td>
-        <td>${r.load ?? '-'}</td>
-        <td>${v}</td>
-        <td>${temp}</td>
-        <td>${t}</td>
-      </tr>`;
-    }).join('');
-  }
-
-  async function scanOnce(startId, endId) {
-    const s = Number(startId), e = Number(endId);
-    if (!(s >= 0 && s <= 253 && e >= 0 && e <= 253 && s <= e)) throw new Error("扫描范围不合法");
-
-    // 只做“发现ID”，不读位置（位置由实时位置开关来读）
-    const found = [];
-    for (let id = s; id <= e; id++) {
-      const ok = await ping(id, 60);
-      if (ok) {
-        found.push(id);
-        if (!scanMap.has(id)) scanMap.set(id, { id, pos:null, speed:null, load:null, voltage:null, temp:null, ts: Date.now() });
-      }
-      // 小间隔，避免挤爆串口
-      await sleep(8);
-    }
-
-    scanStateEl.textContent = found.length ? `已发现：${found.join(", ")}` : "未发现舵机";
-    renderScanTable();
-  }
-    const res = await readData(id, ADDR_PRESENT, LEN_PRESENT, 220);
-    if (!res || !res.params || res.params.length < 8) {
-      scanMap.set(id, { id, ts: Date.now() });
-      return;
-    }
-    const p = res.params;
-    const pos = u16le(p[0], p[1]);
-    const speed = u16le(p[2], p[3]);
-    const load = u16le(p[4], p[5]);
-    const voltage = p[6];
-    const temp = p[7];
-    scanMap.set(id, { id, pos, speed, load, voltage, temp, ts: Date.now() });
-  }
-
-  async function runScan(startId, endId, periodMs, abortRef) {
-    const p = Math.max(120, Number(periodMs) || 500);
-    scanStateEl.textContent = "扫描中…";
-    while (!abortRef.abort) {
-      await scanOnce(startId, endId);
-      await sleep(p);
-    }
-    scanStateEl.textContent = "已停止";
-  }
-      renderScanTable();
-      const spent = performance.now() - t0;
-      const wait = Math.max(0, period - spent);
-      await sleep(wait);
-    }
-
-    scanStateEl.textContent = "未运行";
-    log("停止扫描");
-  }
-
-  // ====== 动作：中位 & RESET ======
-  function toLE2(n){
-    const v = Math.max(0, Math.min(65535, Number(n) || 0));
-    return [v & 0xFF, (v >> 8) & 0xFF];
-  }
-
-  async function writeMiddleCalibrate(targetId) {
-    const id = Number(targetId);
-    if (!(id >= 0 && id <= 253)) throw new Error("目标 ID 不合法");
-    // 按你的需求：向 40 号地址（ADDR_TORQUE=0x28）写入 128，将当前位置校正为 2048
-    await writeReg(id, ADDR_TORQUE, 128);
-    log(`已写入：ID=${id} 地址0x28(40) = 128`);
-  }
-  // ====== UI 状态 ======
-  function setUiConnected(connected) {
+  function setUiConnected(connected){
     btnConnect.disabled = connected;
     btnDisconnect.disabled = !connected;
-
-    btnPingBroadcast.disabled = !connected;
-    btnDoChange.disabled = !connected;
+    baudEl.disabled = connected;
 
     btnPipeStart.disabled = !connected;
     btnPipeStop.disabled = true;
+
+    btnDoChange.disabled = !connected;
+    btnPingBroadcast.disabled = !connected;
 
     btnScanStart.disabled = !connected;
     btnScanStop.disabled = true;
 
     btnPosStart.disabled = !connected;
     btnPosStop.disabled = true;
-    posStateEl.textContent = "实时位置：未运行";
 
-    btnCenter.disabled = !connected;
+    btnMiddle.disabled = !connected;
     btnResetState.disabled = !connected;
-
-    baudEl.disabled = connected;
 
     if (!connected) setStatus("未连接");
     else setStatus("已连接", "ok");
   }
 
-  function lockControlsBusy(busy) {
-    // 避免并发操作同一串口
-    btnDoChange.disabled = busy || !port;
-    btnPingBroadcast.disabled = busy || !port;
-    btnPipeStart.disabled = busy || !port;
-    btnScanStart.disabled = busy || !port;
-    btnCenter.disabled = busy || !port;
-    btnResetState.disabled = busy || !port;
-  }
-
-  // ====== 事件 ======
-  btnClearLog.onclick = () => { logEl.textContent = ""; };
-
   btnConnect.onclick = async () => {
-    try {
-      if (!("serial" in navigator)) {
+    try{
+      if (!("serial" in navigator)){
         alert("当前浏览器不支持 Web Serial。请使用桌面版 Chrome/Edge。");
         return;
       }
       const baudRate = Number(baudEl.value || "1000000");
-      if (!Number.isFinite(baudRate) || baudRate <= 0) {
+      if (!Number.isFinite(baudRate) || baudRate <= 0){
         alert("波特率不合法");
         return;
       }
-
       port = await navigator.serial.requestPort();
       await port.open({ baudRate });
       await startReadLoop();
-
       setUiConnected(true);
       log(`已连接串口，baud=${baudRate}`);
-    } catch (e) {
+    } catch(e){
       log(`连接失败: ${e.message || e}`);
       setUiConnected(false);
       port = null;
@@ -766,182 +590,77 @@ function renderScanTable() {
   };
 
   btnDisconnect.onclick = async () => {
-    try {
-      // 停止后台任务
-      pipelineAbort.abort = true;
-      scanAbort.abort = true;
-      posAbort.abort = true;
-      pipelineRunning = false;
-      scanRunning = false;
-
+    try{
+      stopPipeline();
+      stopScan();
+      stopPos();
       await stopReadLoop();
-      if (writer) { try { writer.releaseLock(); } catch {} writer = null; }
-      if (port) { await port.close(); }
-      port = null;
-
+      if (writer){ try{ writer.releaseLock(); } catch{} writer=null; }
+      if (port){ await port.close(); }
+      port=null;
       setUiConnected(false);
       log("已断开串口");
-    } catch (e) {
+    } catch(e){
       log(`断开失败: ${e.message || e}`);
     }
   };
 
   btnPingBroadcast.onclick = async () => {
-    try {
-      lockControlsBusy(true);
-      const ok = await ping(BROADCAST_ID);
+    try{
+      const ok = await ping(BROADCAST_ID, 150);
       log(ok ? "广播 PING：检测到回包" : "广播 PING：未检测到回包");
-    } catch (e) {
+    } catch(e){
       log(`广播 PING 失败: ${e.message || e}`);
-    } finally {
-      lockControlsBusy(false);
     }
   };
 
   btnDoChange.onclick = async () => {
-    try {
-      if (!confirmOneServoEl.checked) {
-        alert("请先勾选“我确认目前只连接了 1 个舵机”。");
-        return;
-      }
-      lockControlsBusy(true);
-      await changeId(newIdEl.value);
-    } catch (e) {
-      // 已在日志提示
+    try{
+      btnDoChange.disabled = true;
+      await changeIdLikeScript(newIdEl.value);
+    } catch(e){
+      log(`改号失败: ${e.message || e}`);
     } finally {
-      lockControlsBusy(false);
+      btnDoChange.disabled = !port;
     }
   };
 
-  // —— 中值校准（写 40 号地址 = 128）——
-  btnCenter.onclick = async () => {
-    try {
+  btnPipeStart.onclick = () => startPipeline();
+  btnPipeStop.onclick = () => { stopPipeline(); log("流水线已中断"); };
+
+  btnScanStart.onclick = () => startScan();
+  btnScanStop.onclick = () => stopScan();
+
+  btnPosStart.onclick = () => startPos();
+  btnPosStop.onclick = () => stopPos();
+
+  btnMiddle.onclick = async () => {
+    try{
       const id = Number(actIdEl.value);
-      if (!Number.isFinite(id) || id < 0 || id > 253) throw new Error("目标 ID 不合法");
-      lockControlsBusy(true);
-      log(`写入中值校准：ID=${id}，写 0x28(40)=128`);
+      if (!Number.isFinite(id) || id<0 || id>253) throw new Error("目标 ID 不合法");
+      log(`写 0x28(40)=128：ID=${id}`);
       await writeMiddleCalibrate(id);
-      log("✅ 已写入中值校准");
-    } catch (e) {
-      log(`中值校准失败: ${e.message || e}`);
-    } finally {
-      lockControlsBusy(false);
+      log("✅ 写入完成");
+    } catch(e){
+      log(`写入失败: ${e.message || e}`);
     }
   };
 
-  // —— 状态重置（RESET 0x0A）——
   btnResetState.onclick = async () => {
-    try {
+    try{
       const id = Number(actIdEl.value);
-      if (!Number.isFinite(id) || id < 0 || id > 253) throw new Error("目标 ID 不合法");
-      lockControlsBusy(true);
-      log(`发送 RESET(0x0A)（ID=${id}）`);
+      if (!Number.isFinite(id) || id<0 || id>253) throw new Error("目标 ID 不合法");
+      log(`RESET(0x0A)：ID=${id}`);
       await resetState(id);
-      log("✅ 已发送状态重置");
-    } catch (e) {
-      log(`状态重置失败: ${e.message || e}`);
-    } finally {
-      lockControlsBusy(false);
+      log("✅ 已发送 RESET");
+    } catch(e){
+      log(`RESET 失败: ${e.message || e}`);
     }
   };
 
-  btnPipeStart.onclick = async () => {
-    try {
-      if (!pipeConfirmOneEl.checked) {
-        alert("流水线模式必须确保任何时刻总线上只有 1 个舵机（插拔配置）。");
-        return;
-      }
-      if (pipelineRunning || scanRunning) {
-        alert("请先停止正在运行的任务（流水线/扫描）");
-        return;
-      }
-
-      pipelineRunning = true;
-      pipelineAbort = { abort: false };
-      btnPipeStart.disabled = true;
-      btnPipeStop.disabled = false;
-      lockControlsBusy(true);
-
-      await runPipeline(pipeStartEl.value, pipeEndEl.value, pipelineAbort);
-    } catch (e) {
-      log(`流水线启动失败: ${e.message || e}`);
-    } finally {
-      pipelineRunning = false;
-      pipelineAbort.abort = true;
-      btnPipeStart.disabled = !port;
-      btnPipeStop.disabled = true;
-      lockControlsBusy(false);
-      pipeStateEl.textContent = "未运行";
-    }
-  };
-
-  btnPipeStop.onclick = async () => {
-    pipelineAbort.abort = true;
-    pipelineRunning = false;
-    btnPipeStop.disabled = true;
-    log("请求中断流水线...");
-  };
-
-  btnScanStart.onclick = () => {
-    if (scanRunning || pipelineRunning || posLoopRunning) {
-      alert("请先停止正在运行的任务（流水线/扫描/实时位置）");
-      return;
-    }
-    scanRunning = true;
-    scanAbort = { abort: false };
-    btnScanStart.disabled = true;
-    btnScanStop.disabled = false;
-    scanStateEl.textContent = "扫描中…";
-
-    runScan(scanStartEl.value, scanEndEl.value, scanPeriodEl.value, scanAbort)
-      .catch(e => log(`扫描异常: ${e.message || e}`))
-      .finally(() => {
-        scanRunning = false;
-        btnScanStart.disabled = !port;
-        btnScanStop.disabled = true;
-      });
-  };
-
-  btnScanStop.onclick = () => {
-    if (!scanRunning) return;
-    scanAbort.abort = true;
-    scanRunning = false;
-    btnScanStart.disabled = !port;
-    btnScanStop.disabled = true;
-    scanStateEl.textContent = "已停止";
-  };
-
-  btnPosStart.onclick = () => {
-    if (posLoopRunning || pipelineRunning || scanRunning) {
-      alert("请先停止正在运行的任务（流水线/扫描/实时位置）");
-      return;
-    }
-    if (!scanMap.size) {
-      alert("请先扫描一次，或先启动扫描让它发现舵机 ID。");
-      return;
-    }
-    posAbort = { abort: false };
-    btnPosStart.disabled = true;
-    btnPosStop.disabled = false;
-    posStateEl.textContent = "实时位置：运行中";
-    runPosLoop(posPeriodEl.value, posAbort)
-      .catch(e => log(`实时位置异常: ${e.message || e}`))
-      .finally(() => {
-        btnPosStart.disabled = !port;
-        btnPosStop.disabled = true;
-        posStateEl.textContent = "实时位置：已停止";
-      });
-  };
-
-  btnPosStop.onclick = () => {
-    if (!posLoopRunning) return;
-    posAbort.abort = true;
-    btnPosStart.disabled = !port;
-    btnPosStop.disabled = true;
-    posStateEl.textContent = "实时位置：已停止";
-  };
-
-
+  // 初始
+  setUiConnected(false);
+})();
 </script>
 </body>
 </html>
