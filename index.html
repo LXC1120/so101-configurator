@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>舵机配置工具V8（Web Serial / 桌面 Chrome）</title>
+  <title>舵机配置工具V8.1（Web Serial / 桌面 Chrome）</title>
   <style>
     :root{color-scheme:light dark}
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"PingFang SC","Microsoft YaHei",sans-serif;max-width:1200px;margin:0 auto;padding:16px;line-height:1.45}
@@ -47,7 +47,7 @@
   <div class="header">
     <div class="header-inner">
       <div class="leftTitle">
-        <h1>舵机配置工具V8（Web Serial / 桌面 Chrome）</h1>
+        <h1>舵机配置工具V8.1（Web Serial / 桌面 Chrome）</h1>
         <div class="small">
           <span class="pill" id="statusPill">未连接</span>
           <span class="pill">外接电源｜TX/RX 交叉｜GND 共地</span>
@@ -177,7 +177,7 @@
   const ADDR_LOCK   = 0x37;
   const ADDR_TORQUE = 0x28; // 40
 
-  const LS_KEY = "servo_tool_state_v8";
+  const LS_KEY = "servo_tool_state_v8_1";
   function loadState(){ try{ return JSON.parse(localStorage.getItem(LS_KEY) || "{}"); }catch{ return {}; } }
   function saveState(partial){ const cur=loadState(); localStorage.setItem(LS_KEY, JSON.stringify(Object.assign({}, cur, partial))); }
 
@@ -231,12 +231,12 @@
   }
   function log(msg) {
     const t = new Date().toLocaleTimeString();
-    logEl.textContent += `[${t}] ${msg}
-`;
+    logEl.textContent += `[${t}] ${msg}\n`;
     logEl.scrollTop = logEl.scrollHeight;
   }
   function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
+  // ---- Persist / Restore ----
   function restoreFromLocalStorage(){
     const s = loadState();
     baudEl.value = String(s.baud ?? 1000000);
@@ -247,16 +247,17 @@
     posPeriodEl.value = String(s.posPeriod ?? 50);
     pipeStartEl.value = String(s.pipeStart ?? 1);
     pipeEndEl.value = String(s.pipeEnd ?? 6);
-    if (typeof s.shopUrl === "string" && s.shopUrl.trim()){
+    if (typeof s.shopUrl === "string" && s.shopUrl.trim()) {
       shopLinkEl.href = s.shopUrl.trim();
       shopLinkEl.textContent = s.shopUrl.trim();
     }
+
     const ids = Array.isArray(s.ids) ? s.ids : [];
-    for (const id of ids){
+    for (const id of ids) {
       if (!Number.isFinite(id)) continue;
       ensureDevice(id);
       const rowState = (s.rowState && s.rowState[String(id)]) ? s.rowState[String(id)] : null;
-      if (rowState && typeof rowState.newIdInput === "string"){
+      if (rowState && typeof rowState.newIdInput === "string") {
         devices.get(id).row.input.value = rowState.newIdInput;
       }
       updateRow(id);
@@ -289,8 +290,16 @@
     el.addEventListener("change", () => persistInputs());
   });
 
-  function calcChecksum(dataBytes) { let sum=0; for (const b of dataBytes) sum += (b & 0xFF); return (~sum) & 0xFF; }
-  function buildPacket(dataBytes) { const chk = calcChecksum(dataBytes); return new Uint8Array([0xFF, 0xFF, ...dataBytes, chk]); }
+  // ---- Protocol ----
+  function calcChecksum(dataBytes) {
+    let sum=0;
+    for (const b of dataBytes) sum += (b & 0xFF);
+    return (~sum) & 0xFF;
+  }
+  function buildPacket(dataBytes) {
+    const chk = calcChecksum(dataBytes);
+    return new Uint8Array([0xFF, 0xFF, ...dataBytes, chk]);
+  }
   function verifyFrameChecksum(frame){
     if (!frame || frame.length < 6) return false;
     const len = frame[3];
@@ -300,7 +309,11 @@
     const chk = calcChecksum(dataBytes);
     return chk === frame[frame.length - 1];
   }
-  async function ensureWriter(){ if (!port) throw new Error("未连接串口"); if (!writer) writer = port.writable.getWriter(); }
+
+  async function ensureWriter(){
+    if (!port) throw new Error("未连接串口");
+    if (!writer) writer = port.writable.getWriter();
+  }
   async function writeRaw(u8){ await ensureWriter(); await writer.write(u8); }
 
   async function startReadLoop(){
@@ -317,7 +330,7 @@
             if (rxBuf.length > 8192) rxBuf = rxBuf.slice(-4096);
           }
         }
-      } catch(e){
+      } catch(e) {
         log(`读取异常: ${e.message || e}`);
       }
     })();
@@ -342,6 +355,7 @@
     if (rxBuf.length > 4096) rxBuf = rxBuf.slice(-1024);
     return null;
   }
+
   async function waitFrame(expectedId, timeoutMs){
     const start = performance.now();
     while (performance.now() - start < timeoutMs){
@@ -393,6 +407,7 @@
     await writeReg(oldId, ADDR_ID, newId);
     await sleep(150);
     await writeReg(newId, ADDR_LOCK, 1);
+
     let ok = await ping(newId, 160);
     if (!ok){ await sleep(250); ok = await ping(newId, 160); }
     if (!ok) throw new Error("验证失败");
@@ -404,10 +419,12 @@
     await writeReg(BROADCAST_ID, ADDR_ID, newId);
     await sleep(150);
     await writeReg(newId, ADDR_LOCK, 1);
+
     let ok = await ping(newId, 160);
     if (!ok){ await sleep(250); ok = await ping(newId, 160); }
     if (!ok) throw new Error("验证失败");
   }
+
   async function writeMiddleCalibrate(id){ await writeReg(id, 0x28, 128); }
   async function resetState(id){
     return withLock(async () => {
@@ -417,6 +434,7 @@
     });
   }
 
+  // ---- Table ----
   function ensureDevice(id){
     if (!devices.has(id)) devices.set(id, {online:false, pos:null, ts:null, failCount:0, row:null});
     ensureRow(id);
@@ -426,6 +444,7 @@
     if (d.row) return d.row;
 
     const tr = document.createElement("tr"); tr.dataset.id = String(id);
+
     const tdId = document.createElement("td"); tdId.textContent = String(id);
     const tdOnline = document.createElement("td");
     const tdPos = document.createElement("td");
@@ -476,11 +495,11 @@
 
     try{
       if (safeOneServoEl.checked){
-        const ok = confirm("写操作前确认：当前总线上只有 1 个舵机？
-（单行改ID为定向写，但仍建议只接1个。）");
+        const ok = confirm("写操作前确认：当前总线上只有 1 个舵机？\n（单行改ID为定向写，但仍建议只接1个。）");
         if (!ok) return;
       }
       btn.disabled = true;
+
       const d = devices.get(id);
       if (!d || !d.online) throw new Error("当前舵机不在线");
 
@@ -512,6 +531,7 @@
     }
   });
 
+  // ---- Scan (modal) ----
   async function scanOnce(){
     const start = Number(scanStartEl.value);
     const end = Number(scanEndEl.value);
@@ -520,20 +540,23 @@
       return;
     }
     scanStateEl.textContent = "扫描中...";
+
     const onlineIds = [];
-    for (let id=start; id<=end; id++){
+    for (let id=start; id<=end; id++) {
       const ok = await ping(id, 70);
       if (ok) onlineIds.push(id);
     }
+
     tbody.innerHTML = "";
     devices.clear();
-    for (const id of onlineIds){
+    for (const id of onlineIds) {
       ensureDevice(id);
       const d = devices.get(id);
       d.online = true;
       d.ts = Date.now();
       updateRow(id);
     }
+
     scanStateEl.textContent = `在线：${onlineIds.length} 个`;
     persistInputs();
     persistTableState();
@@ -541,6 +564,7 @@
     dlgScan.close();
   }
 
+  // ---- Position loop ----
   const failThreshold = 3;
   let posLoopRunning=false;
   async function posLoop(){
@@ -585,6 +609,7 @@
     else stopPosLoop();
   });
 
+  // ---- Pipeline (modal) ----
   let pipeRunning=false;
   let pipeTarget=1, pipeStart=1, pipeEnd=6;
   let pipeState="IDLE";
@@ -651,8 +676,7 @@
       return;
     }
     if (safeOneServoEl.checked){
-      const ok = confirm("流水线模式会使用广播探测与广播写入。
-请确认：任意时刻总线上只有 1 个舵机。");
+      const ok = confirm("流水线模式会使用广播探测与广播写入。\n请确认：任意时刻总线上只有 1 个舵机。");
       if (!ok) return;
     }
     persistInputs();
@@ -675,6 +699,7 @@
     log("流水线已中断");
   }
 
+  // ---- Connect ----
   function setUiConnected(connected){
     btnConnect.disabled = connected;
     btnDisconnect.disabled = !connected;
@@ -705,7 +730,7 @@
       setUiConnected(true);
       log(`已连接串口，baud=${baudRate}`);
       if (posEnableEl.checked) ensurePosLoop();
-    } catch(e){
+    } catch(e) {
       log(`连接失败: ${e.message || e}`);
       setUiConnected(false);
       port = null;
@@ -722,11 +747,12 @@
       port=null;
       setUiConnected(false);
       log("已断开串口");
-    } catch(e){
+    } catch(e) {
       log(`断开失败: ${e.message || e}`);
     }
   };
 
+  // ---- UI events ----
   btnOpenScan.onclick = () => dlgScan.showModal();
   btnOpenPipeline.onclick = () => dlgPipeline.showModal();
   btnCloseScan.onclick = () => dlgScan.close();
@@ -746,6 +772,7 @@
     }
   };
 
+  // ---- Boot ----
   restoreFromLocalStorage();
   persistInputs();
   setUiConnected(false);
