@@ -6,22 +6,30 @@
   <title>舵机配置工具（Web Serial）</title>
   <style>
     :root{color-scheme:light dark}
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"PingFang SC","Microsoft YaHei",sans-serif;max-width:900px;margin:0 auto;padding:18px;line-height:1.45}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"PingFang SC","Microsoft YaHei",sans-serif;max-width:980px;margin:0 auto;padding:18px;line-height:1.45}
     h1{font-size:20px;margin:0 0 10px}
+    h2{font-size:16px;margin:0 0 10px}
     .card{border:1px solid rgba(127,127,127,.25);border-radius:14px;padding:14px;margin:12px 0;box-shadow:0 2px 10px rgba(0,0,0,.05)}
     .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
     label{display:flex;gap:8px;align-items:center}
     input,select,button{font:inherit}
-    input{padding:8px 10px;border-radius:10px;border:1px solid rgba(127,127,127,.35);width:130px}
+    input,select{padding:8px 10px;border-radius:10px;border:1px solid rgba(127,127,127,.35)}
+    input{width:140px}
+    select{min-width:180px}
     button{padding:10px 14px;border-radius:12px;border:1px solid rgba(127,127,127,.35);cursor:pointer}
     button:disabled{opacity:.45;cursor:not-allowed}
     .ok{color:#0a7a2f}
     .warn{color:#b45309}
     .bad{color:#b91c1c}
-    pre{background:rgba(0,0,0,.85);color:#e8eefc;padding:12px;border-radius:14px;overflow:auto;max-height:340px}
+    pre{background:rgba(0,0,0,.85);color:#e8eefc;padding:12px;border-radius:14px;overflow:auto;max-height:360px}
     code{background:rgba(127,127,127,.18);padding:2px 6px;border-radius:8px}
-    .small{font-size:12px;opacity:.8}
+    .small{font-size:12px;opacity:.86}
     .pill{display:inline-block;padding:2px 10px;border:1px solid rgba(127,127,127,.35);border-radius:999px}
+    .grid{display:grid;grid-template-columns:1fr;gap:10px}
+    @media (min-width:900px){.grid{grid-template-columns:1fr 1fr}}
+    table{border-collapse:collapse;width:100%}
+    th,td{border-bottom:1px solid rgba(127,127,127,.25);padding:6px 8px;text-align:left;font-size:13px}
+    th{opacity:.9}
   </style>
 </head>
 <body>
@@ -46,28 +54,104 @@
     </p>
   </div>
 
-  <div class="card">
-    <h2 style="font-size:16px;margin:0 0 10px">改号（保持原脚本流程）</h2>
-    <div class="row">
-      <label>目标新 ID（1-253）
-        <input id="newId" inputmode="numeric" min="1" max="253" value="1" />
-      </label>
-      <label class="small" style="gap:10px">
-        <input id="confirmOneServo" type="checkbox" />
-        我确认目前只连接了 <b>1 个</b> 舵机
-      </label>
+  <div class="grid">
+    <div class="card">
+      <h2>流水线自动配置 ID（插拔即可）</h2>
+      <div class="row">
+        <label>起始 ID
+          <input id="pipeStart" inputmode="numeric" min="1" max="253" value="1" />
+        </label>
+        <label>结束 ID
+          <input id="pipeEnd" inputmode="numeric" min="1" max="253" value="6" />
+        </label>
+        <label class="small" style="gap:10px">
+          <input id="pipeConfirmOne" type="checkbox" />
+          我确认任何时刻总线上只会有 <b>1 个</b> 舵机
+        </label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="btnPipeStart" disabled>开始流水线</button>
+        <button id="btnPipeStop" disabled>中断</button>
+        <span class="small" id="pipeState">未运行</span>
+      </div>
+      <p class="small warn" style="margin:10px 0 0">
+        逻辑：持续广播 PING 检测“插入”，检测到后按顺序写入 ID，并要求拔掉后再继续下一只。
+      </p>
     </div>
-    <div class="row" style="margin-top:10px">
-      <button id="btnPingBroadcast" disabled>Ping 广播(0xFE)</button>
-      <button id="btnDoChange" disabled>开始配置</button>
+
+    <div class="card">
+      <h2>单独改号（保持原脚本流程）</h2>
+      <div class="row">
+        <label>目标新 ID（1-253）
+          <input id="newId" inputmode="numeric" min="1" max="253" value="1" />
+        </label>
+        <label class="small" style="gap:10px">
+          <input id="confirmOneServo" type="checkbox" />
+          我确认目前只连接了 <b>1 个</b> 舵机
+        </label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="btnPingBroadcast" disabled>Ping 广播(0xFE)</button>
+        <button id="btnDoChange" disabled>开始改号</button>
+      </div>
     </div>
-    <p class="small warn" style="margin:10px 0 0">
-      ⚠️ 必须外接电源（如 6V+）。USB 串口不供电。TX/RX 需交叉，且 GND 必须共地。
-    </p>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>扫描舵机（实时显示位置等）</h2>
+      <div class="row">
+        <label>扫描 ID 从
+          <input id="scanStart" inputmode="numeric" min="0" max="253" value="1" />
+        </label>
+        <label>到
+          <input id="scanEnd" inputmode="numeric" min="0" max="253" value="20" />
+        </label>
+        <label>刷新(ms)
+          <input id="scanPeriod" inputmode="numeric" value="200" />
+        </label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="btnScanStart" disabled>开始扫描</button>
+        <button id="btnScanStop" disabled>停止扫描</button>
+        <span class="small" id="scanState">未运行</span>
+      </div>
+      <div style="margin-top:10px;overflow:auto;max-height:220px">
+        <table>
+          <thead><tr><th>ID</th><th>位置</th><th>速度</th><th>负载</th><th>电压</th><th>温度</th><th>更新时间</th></tr></thead>
+          <tbody id="scanTableBody"><tr><td colspan="7" class="small">（尚未扫描）</td></tr></tbody>
+        </table>
+      </div>
+      <p class="small" style="margin:10px 0 0">
+        读取：从地址 <code>0x38</code> 连续读取 8 字节（位置/速度/负载/电压/温度）。
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>重置中置位 / 状态重置</h2>
+      <div class="row">
+        <label>目标舵机 ID
+          <input id="actId" inputmode="numeric" min="0" max="253" value="1" />
+        </label>
+        <label>速度(步/秒)
+          <input id="actSpeed" inputmode="numeric" value="1000" />
+        </label>
+        <label>时间(ms)
+          <input id="actTime" inputmode="numeric" value="0" />
+        </label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="btnCenter" disabled>转到中位(2048)</button>
+        <button id="btnResetState" disabled>状态重置(RESET 0x0A)</button>
+      </div>
+      <p class="small warn" style="margin:10px 0 0">
+        中位写入首地址 <code>0x2A</code>：位置(2048)、时间、速度，共 6 字节；状态重置使用指令 <code>0x0A</code>（无参数）。
+      </p>
+    </div>
   </div>
 
   <div class="card">
-    <h2 style="font-size:16px;margin:0 0 10px">日志</h2>
+    <h2>日志</h2>
     <pre id="log"></pre>
     <div class="row small" style="justify-content:space-between;margin-top:10px">
       <span>提示：浏览器会弹窗让你选择串口设备，这是正常的权限机制。</span>
@@ -83,12 +167,26 @@
   const ADDR_LOCK    = 0x37;   // 锁地址
   const ADDR_TORQUE  = 0x28;   // 扭力开关
 
+  // 状态查询首地址 0x38：位置/速度/负载/电压/温度（共8字节）
+  const ADDR_PRESENT = 0x38;
+  const LEN_PRESENT  = 0x08;
+
+  // 目标位置首地址 0x2A：位置(2) + 时间(2) + 速度(2)
+  const ADDR_GOAL    = 0x2A;
+
   // ====== 状态 ======
   let port = null;
   let writer = null;
   let reader = null;
   let readLoopRunning = false;
   let rxBuf = [];
+
+  let pipelineRunning = false;
+  let pipelineAbort = { abort: false };
+
+  let scanRunning = false;
+  let scanAbort = { abort: false };
+  const scanMap = new Map();
 
   // ====== UI ======
   const logEl = document.getElementById('log');
@@ -104,6 +202,27 @@
   const newIdEl = document.getElementById('newId');
   const confirmOneServoEl = document.getElementById('confirmOneServo');
 
+  const pipeStartEl = document.getElementById('pipeStart');
+  const pipeEndEl = document.getElementById('pipeEnd');
+  const pipeConfirmOneEl = document.getElementById('pipeConfirmOne');
+  const btnPipeStart = document.getElementById('btnPipeStart');
+  const btnPipeStop = document.getElementById('btnPipeStop');
+  const pipeStateEl = document.getElementById('pipeState');
+
+  const scanStartEl = document.getElementById('scanStart');
+  const scanEndEl = document.getElementById('scanEnd');
+  const scanPeriodEl = document.getElementById('scanPeriod');
+  const btnScanStart = document.getElementById('btnScanStart');
+  const btnScanStop = document.getElementById('btnScanStop');
+  const scanStateEl = document.getElementById('scanState');
+  const scanTableBody = document.getElementById('scanTableBody');
+
+  const actIdEl = document.getElementById('actId');
+  const actSpeedEl = document.getElementById('actSpeed');
+  const actTimeEl = document.getElementById('actTime');
+  const btnCenter = document.getElementById('btnCenter');
+  const btnResetState = document.getElementById('btnResetState');
+
   function setStatus(text, kind="") {
     statusPill.textContent = text;
     statusPill.className = "pill " + kind;
@@ -117,10 +236,13 @@
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-  // ====== 协议：校验与组包（与脚本一致：checksum = (~sum(data)) & 0xFF）======
+  function u16le(lo, hi){ return (lo & 0xFF) | ((hi & 0xFF) << 8); }
+  function toHex(b){ return `0x${(b & 0xFF).toString(16).padStart(2,'0')}`; }
+
+  // ====== 协议：校验与组包（checksum = (~sum(data)) & 0xFF）======
   function calcChecksum(dataBytes) {
     let sum = 0;
-    for (const b of dataBytes) sum += b;
+    for (const b of dataBytes) sum += (b & 0xFF);
     return (~sum) & 0xFF;
   }
   function buildPacket(dataBytes) {
@@ -138,7 +260,7 @@
     await writer.write(u8);
   }
 
-  // ====== 读取：最小实现（用于判断是否有回包）======
+  // ====== 读取：缓存收到的字节 ======
   async function startReadLoop() {
     reader = port.readable.getReader();
     readLoopRunning = true;
@@ -150,7 +272,7 @@
           if (done) break;
           if (value && value.length) {
             for (const b of value) rxBuf.push(b);
-            if (rxBuf.length > 4096) rxBuf = rxBuf.slice(-2048);
+            if (rxBuf.length > 8192) rxBuf = rxBuf.slice(-4096);
           }
         }
       } catch (e) {
@@ -169,7 +291,34 @@
     rxBuf = [];
   }
 
-  // ====== 命令：ping / write（与脚本一致的包结构）======
+  // ====== 帧解析：从 rxBuf 中抽取一帧 ======
+  function tryPopFrameFromRxBuf() {
+    // 帧格式：FF FF ID LEN ERROR ... CHK
+    // LEN = 参数个数 + 2（ERROR + CHK）
+    for (let i = 0; i + 6 <= rxBuf.length; i++) {
+      if (rxBuf[i] !== 0xFF || rxBuf[i+1] !== 0xFF) continue;
+      const id = rxBuf[i+2];
+      const len = rxBuf[i+3];
+      const total = 2 + 1 + 1 + len; // FF FF + ID + LEN + (len bytes: ERROR..CHK)
+      if (i + total > rxBuf.length) return null; // 不够长
+      const frame = rxBuf.slice(i, i + total);
+      rxBuf = rxBuf.slice(i + total);
+      return { id, len, frame };
+    }
+    return null;
+  }
+
+  async function waitFrame(filterFn, timeoutMs = 180) {
+    const start = performance.now();
+    while (performance.now() - start < timeoutMs) {
+      const fr = tryPopFrameFromRxBuf();
+      if (fr && (!filterFn || filterFn(fr))) return fr;
+      await sleep(5);
+    }
+    return null;
+  }
+
+  // ====== 命令：ping / read / write ======
   async function ping(targetId, timeoutMs = 150) {
     // FF FF ID 02 01 CHK
     const data = [targetId & 0xFF, 0x02, 0x01];
@@ -177,13 +326,35 @@
     rxBuf = [];
     await writeRaw(pkt);
 
-    const start = performance.now();
-    while (performance.now() - start < timeoutMs) {
-      // 与脚本类似：只要缓冲达到最小阈值，就认为“收到回包”
-      if (rxBuf.length >= 6) return true;
-      await sleep(5);
+    // 只要收到任意回包（>=6字节）就认为在线
+    const fr = await waitFrame(() => true, timeoutMs);
+    return !!fr;
+  }
+
+  async function readData(targetId, address, length, timeoutMs = 220) {
+    // FF FF ID 04 02 ADDR LEN CHK
+    const data = [targetId & 0xFF, 0x04, 0x02, address & 0xFF, length & 0xFF];
+    const pkt = buildPacket(data);
+    rxBuf = [];
+    await writeRaw(pkt);
+    const fr = await waitFrame((f) => f.id === (targetId & 0xFF), timeoutMs);
+    if (!fr) return null;
+
+    // frame = [FF FF ID LEN ERROR ... CHK]
+    const frame = fr.frame;
+    const error = frame[4];
+    const paramsLen = fr.len - 2; // 去掉 ERROR 和 CHK
+    const params = frame.slice(5, 5 + paramsLen);
+
+    // 轻量校验（可选）：校验和 = ~(ID + LEN + ERROR + PARAMS)
+    const chk = frame[5 + paramsLen];
+    const calc = calcChecksum([frame[2], frame[3], error, ...params]);
+    if (chk !== calc) {
+      // 不直接报错，避免不同固件差异导致误判
+      log(`⚠️ 校验和不一致：recv=${toHex(chk)} calc=${toHex(calc)}`);
     }
-    return false;
+
+    return { id: fr.id, error, params };
   }
 
   async function writeReg(targetId, address, value) {
@@ -192,39 +363,53 @@
     const pkt = buildPacket(data);
     rxBuf = [];
     await writeRaw(pkt);
-    await sleep(50); // 对齐脚本节奏
+    await sleep(50);
   }
 
-  // ====== 一键改号：严格保持原脚本顺序 ======
+  async function writeBytes(targetId, address, bytes) {
+    // WRITE DATA: LEN = N + 3（Instruction + Addr + N bytes + CHK）
+    const n = bytes.length;
+    const len = (n + 3) & 0xFF;
+    const data = [targetId & 0xFF, len, 0x03, address & 0xFF, ...bytes.map(b => b & 0xFF)];
+    const pkt = buildPacket(data);
+    rxBuf = [];
+    await writeRaw(pkt);
+    await sleep(50);
+  }
+
+  async function resetState(targetId) {
+    // RESET: LEN=0x02, INST=0x0A, no params
+    const data = [targetId & 0xFF, 0x02, 0x0A];
+    const pkt = buildPacket(data);
+    rxBuf = [];
+    await writeRaw(pkt);
+    await sleep(80);
+  }
+
+  // ====== 单独改号：严格保持原脚本顺序 ======
   async function changeId(newId) {
     newId = Number(newId);
     if (!(newId >= 1 && newId <= 253)) throw new Error("ID 需在 1~253");
 
     log(`开始：目标新 ID = ${newId}`);
 
-    // 0) 广播 ping（仅用于提示，不作为强依赖）
     log(`PING 广播(0xFE) ...`);
     const seen = await ping(BROADCAST_ID);
     log(seen ? "检测到回包（广播）" : "未检测到回包（某些设备可能不回广播 PING，继续尝试写入）");
 
-    // A) 解锁：广播写 0
-    log(`A) 解锁：写 ADDR 0x${ADDR_LOCK.toString(16)} = 0（广播）`);
+    log(`A) 解锁：写 ${toHex(ADDR_LOCK)} = 0（广播）`);
     await writeReg(BROADCAST_ID, ADDR_LOCK, 0);
 
-    // B) 关扭力：广播写 0
-    log(`B) 关扭力：写 ADDR 0x${ADDR_TORQUE.toString(16)} = 0（广播）`);
+    log(`B) 关扭力：写 ${toHex(ADDR_TORQUE)} = 0（广播）`);
     await writeReg(BROADCAST_ID, ADDR_TORQUE, 0);
 
-    // C) 写 ID：广播写 newId
-    log(`C) 写ID：写 ADDR 0x${ADDR_ID.toString(16)} = ${newId}（广播）`);
+    log(`C) 写ID：写 ${toHex(ADDR_ID)} = ${newId}（广播）`);
     await writeReg(BROADCAST_ID, ADDR_ID, newId);
-    await sleep(150); // 等待 EPROM 写入（对齐脚本）
+    await sleep(150);
 
-    // D) 上锁：对新 ID 写 1
-    log(`D) 上锁：写 ADDR 0x${ADDR_LOCK.toString(16)} = 1（ID=${newId}）`);
+    log(`D) 上锁：写 ${toHex(ADDR_LOCK)} = 1（ID=${newId}）`);
     await writeReg(newId, ADDR_LOCK, 1);
 
-    // 验证：ping 新 ID（一次不行就 0.5s 后重试）
     log(`验证：PING ID=${newId} ...`);
     let ok = await ping(newId, 180);
     if (!ok) {
@@ -237,19 +422,209 @@
       log("✅ 修改成功！");
       setStatus(`已连接（最近成功改号：${newId}）`, "ok");
     } else {
-      log("❌ 修改失败：请检查外接电源、线序（TX/RX/GND）、波特率是否一致。");
+      log("❌ 修改失败：请检查外接电源、线序（TX/RX/GND）、波特率是否一致。\n（如果总线上不止 1 个舵机，也会导致异常。）");
       throw new Error("验证失败");
     }
   }
 
+  // ====== 流水线：持续检测插入 -> 写ID -> 等待拔出 ======
+  async function runPipeline(startId, endId, abortRef) {
+    const s = Number(startId), e = Number(endId);
+    if (!(s >= 1 && s <= 253 && e >= 1 && e <= 253 && s <= e)) throw new Error("起始/结束 ID 不合法");
+
+    pipelineStateEl.textContent = `运行中：等待插入（目标 ${s}..${e}）`;
+    log(`流水线开始：范围 ${s}..${e}`);
+
+    let targetId = s;
+
+    while (!abortRef.abort && targetId <= e) {
+      pipeStateEl.textContent = `等待插入：目标 ID=${targetId}`;
+
+      // 1) 等待插入（广播 ping 成功）
+      while (!abortRef.abort) {
+        const ok = await ping(BROADCAST_ID, 180);
+        if (ok) break;
+        await sleep(80);
+      }
+      if (abortRef.abort) break;
+
+      log(`>> 检测到舵机插入，开始写入 ID=${targetId}`);
+
+      try {
+        // A 解锁
+        await writeReg(BROADCAST_ID, ADDR_LOCK, 0);
+        // B 关扭力
+        await writeReg(BROADCAST_ID, ADDR_TORQUE, 0);
+        // C 写ID
+        await writeReg(BROADCAST_ID, ADDR_ID, targetId);
+        await sleep(150);
+        // D 上锁
+        await writeReg(targetId, ADDR_LOCK, 1);
+
+        // 验证
+        let ok = await ping(targetId, 220);
+        if (!ok) {
+          await sleep(500);
+          ok = await ping(targetId, 220);
+        }
+        if (!ok) {
+          log(`❌ 写入后验证失败（ID=${targetId}），请检查电源/线序/是否同时连接多舵机`);
+          // 失败时：要求拔掉再试同一个 ID
+          pipeStateEl.textContent = `失败：请拔掉舵机后重试（目标 ID=${targetId}）`;
+        } else {
+          log(`✅ 写入成功：ID=${targetId}`);
+          targetId += 1;
+        }
+      } catch (e) {
+        log(`流水线写入异常: ${e.message || e}`);
+      }
+
+      // 2) 等待拔出：连续 1s ping 不通
+      pipeStateEl.textContent = `请拔掉舵机...（继续目标 ID=${targetId}）`;
+      let lostSince = null;
+      while (!abortRef.abort) {
+        // 这里用广播 ping 来判定总线上是否还有舵机
+        const ok = await ping(BROADCAST_ID, 180);
+        if (ok) {
+          lostSince = null;
+        } else {
+          if (lostSince === null) lostSince = performance.now();
+          if (performance.now() - lostSince >= 1000) break;
+        }
+        await sleep(100);
+      }
+      if (abortRef.abort) break;
+
+      log("已检测到断开 ✂️");
+      await sleep(200);
+    }
+
+    const done = !abortRef.abort;
+    pipeStateEl.textContent = done ? `完成：已配置到 ${Math.min(endId, startId + (endId-startId))}` : "已中断";
+    log(done ? "🎉 流水线完成" : "⏹️ 流水线已中断");
+  }
+
+  // ====== 扫描：轮询范围内在线舵机并读状态 ======
+  function renderScanTable() {
+    const rows = Array.from(scanMap.values()).sort((a,b)=>a.id-b.id);
+    if (!rows.length) {
+      scanTableBody.innerHTML = `<tr><td colspan="7" class="small">（未发现舵机）</td></tr>`;
+      return;
+    }
+    scanTableBody.innerHTML = rows.map(r => {
+      const t = new Date(r.ts).toLocaleTimeString();
+      const v = (r.voltage != null) ? (r.voltage/10).toFixed(1) + 'V' : '-';
+      const temp = (r.temp != null) ? r.temp + '°C' : '-';
+      return `<tr>
+        <td>${r.id}</td>
+        <td>${r.pos ?? '-'}</td>
+        <td>${r.speed ?? '-'}</td>
+        <td>${r.load ?? '-'}</td>
+        <td>${v}</td>
+        <td>${temp}</td>
+        <td>${t}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function scanOnce(id) {
+    const ok = await ping(id, 120);
+    if (!ok) {
+      // 若之前存在，保留一会儿也行；这里直接删除
+      scanMap.delete(id);
+      return;
+    }
+    const res = await readData(id, ADDR_PRESENT, LEN_PRESENT, 220);
+    if (!res || !res.params || res.params.length < 8) {
+      scanMap.set(id, { id, ts: Date.now() });
+      return;
+    }
+    const p = res.params;
+    const pos = u16le(p[0], p[1]);
+    const speed = u16le(p[2], p[3]);
+    const load = u16le(p[4], p[5]);
+    const voltage = p[6];
+    const temp = p[7];
+    scanMap.set(id, { id, pos, speed, load, voltage, temp, ts: Date.now() });
+  }
+
+  async function runScan(startId, endId, periodMs, abortRef) {
+    const s = Number(startId), e = Number(endId);
+    const period = Math.max(60, Number(periodMs) || 200);
+    if (!(s >= 0 && s <= 253 && e >= 0 && e <= 253 && s <= e)) throw new Error("扫描范围不合法");
+
+    scanStateEl.textContent = `运行中：${s}..${e}`;
+    log(`开始扫描：${s}..${e}，刷新=${period}ms`);
+
+    scanMap.clear();
+    renderScanTable();
+
+    while (!abortRef.abort) {
+      const t0 = performance.now();
+      for (let id = s; id <= e; id++) {
+        if (abortRef.abort) break;
+        await scanOnce(id);
+        await sleep(2);
+      }
+      renderScanTable();
+      const spent = performance.now() - t0;
+      const wait = Math.max(0, period - spent);
+      await sleep(wait);
+    }
+
+    scanStateEl.textContent = "未运行";
+    log("停止扫描");
+  }
+
+  // ====== 动作：中位 & RESET ======
+  function toLE2(n){
+    const v = Math.max(0, Math.min(65535, Number(n) || 0));
+    return [v & 0xFF, (v >> 8) & 0xFF];
+  }
+
+  async function moveToCenter(targetId, speed, timeMs) {
+    const id = Number(targetId);
+    if (!(id >= 0 && id <= 253)) throw new Error("目标 ID 不合法");
+
+    const posBytes = toLE2(2048);
+    const timeBytes = toLE2(timeMs);
+    const speedBytes = toLE2(speed);
+
+    log(`中置：写 ${toHex(ADDR_GOAL)} 位置=2048 时间=${timeMs} 速度=${speed}（ID=${id}）`);
+    await writeBytes(id, ADDR_GOAL, [...posBytes, ...timeBytes, ...speedBytes]);
+  }
+
+  // ====== UI 状态 ======
   function setUiConnected(connected) {
     btnConnect.disabled = connected;
     btnDisconnect.disabled = !connected;
+
     btnPingBroadcast.disabled = !connected;
     btnDoChange.disabled = !connected;
+
+    btnPipeStart.disabled = !connected;
+    btnPipeStop.disabled = true;
+
+    btnScanStart.disabled = !connected;
+    btnScanStop.disabled = true;
+
+    btnCenter.disabled = !connected;
+    btnResetState.disabled = !connected;
+
     baudEl.disabled = connected;
+
     if (!connected) setStatus("未连接");
     else setStatus("已连接", "ok");
+  }
+
+  function lockControlsBusy(busy) {
+    // 避免并发操作同一串口
+    btnDoChange.disabled = busy || !port;
+    btnPingBroadcast.disabled = busy || !port;
+    btnPipeStart.disabled = busy || !port;
+    btnScanStart.disabled = busy || !port;
+    btnCenter.disabled = busy || !port;
+    btnResetState.disabled = busy || !port;
   }
 
   // ====== 事件 ======
@@ -282,10 +657,17 @@
 
   btnDisconnect.onclick = async () => {
     try {
+      // 停止后台任务
+      pipelineAbort.abort = true;
+      scanAbort.abort = true;
+      pipelineRunning = false;
+      scanRunning = false;
+
       await stopReadLoop();
       if (writer) { try { writer.releaseLock(); } catch {} writer = null; }
       if (port) { await port.close(); }
       port = null;
+
       setUiConnected(false);
       log("已断开串口");
     } catch (e) {
@@ -295,10 +677,13 @@
 
   btnPingBroadcast.onclick = async () => {
     try {
+      lockControlsBusy(true);
       const ok = await ping(BROADCAST_ID);
       log(ok ? "广播 PING：检测到回包" : "广播 PING：未检测到回包");
     } catch (e) {
       log(`广播 PING 失败: ${e.message || e}`);
+    } finally {
+      lockControlsBusy(false);
     }
   };
 
@@ -308,12 +693,113 @@
         alert("请先勾选“我确认目前只连接了 1 个舵机”。");
         return;
       }
-      btnDoChange.disabled = true;
+      lockControlsBusy(true);
       await changeId(newIdEl.value);
     } catch (e) {
-      // 保持提示即可
+      // 已在日志提示
     } finally {
-      btnDoChange.disabled = false;
+      lockControlsBusy(false);
+    }
+  };
+
+  btnPipeStart.onclick = async () => {
+    try {
+      if (!pipeConfirmOneEl.checked) {
+        alert("流水线模式必须确保任何时刻总线上只有 1 个舵机（插拔配置）。");
+        return;
+      }
+      if (pipelineRunning || scanRunning) {
+        alert("请先停止正在运行的任务（流水线/扫描）");
+        return;
+      }
+
+      pipelineRunning = true;
+      pipelineAbort = { abort: false };
+      btnPipeStart.disabled = true;
+      btnPipeStop.disabled = false;
+      lockControlsBusy(true);
+
+      await runPipeline(pipeStartEl.value, pipeEndEl.value, pipelineAbort);
+    } catch (e) {
+      log(`流水线启动失败: ${e.message || e}`);
+    } finally {
+      pipelineRunning = false;
+      pipelineAbort.abort = true;
+      btnPipeStart.disabled = !port;
+      btnPipeStop.disabled = true;
+      lockControlsBusy(false);
+      pipeStateEl.textContent = "未运行";
+    }
+  };
+
+  btnPipeStop.onclick = async () => {
+    pipelineAbort.abort = true;
+    pipelineRunning = false;
+    btnPipeStop.disabled = true;
+    log("请求中断流水线...");
+  };
+
+  btnScanStart.onclick = async () => {
+    try {
+      if (scanRunning || pipelineRunning) {
+        alert("请先停止正在运行的任务（流水线/扫描）");
+        return;
+      }
+      scanRunning = true;
+      scanAbort = { abort: false };
+      btnScanStart.disabled = true;
+      btnScanStop.disabled = false;
+      lockControlsBusy(true);
+
+      await runScan(scanStartEl.value, scanEndEl.value, scanPeriodEl.value, scanAbort);
+    } catch (e) {
+      log(`扫描启动失败: ${e.message || e}`);
+    } finally {
+      scanRunning = false;
+      scanAbort.abort = true;
+      btnScanStart.disabled = !port;
+      btnScanStop.disabled = true;
+      lockControlsBusy(false);
+    }
+  };
+
+  btnScanStop.onclick = async () => {
+    scanAbort.abort = true;
+    scanRunning = false;
+    btnScanStop.disabled = true;
+  };
+
+  btnCenter.onclick = async () => {
+    try {
+      if (pipelineRunning || scanRunning) {
+        alert("请先停止流水线/扫描，再执行动作");
+        return;
+      }
+      lockControlsBusy(true);
+      await moveToCenter(actIdEl.value, actSpeedEl.value, actTimeEl.value);
+      log("✅ 已发送中置指令");
+    } catch (e) {
+      log(`中置失败: ${e.message || e}`);
+    } finally {
+      lockControlsBusy(false);
+    }
+  };
+
+  btnResetState.onclick = async () => {
+    try {
+      if (pipelineRunning || scanRunning) {
+        alert("请先停止流水线/扫描，再执行动作");
+        return;
+      }
+      const id = Number(actIdEl.value);
+      lockControlsBusy(true);
+      log(`发送 RESET(0x0A)（ID=${id}）`);
+      await resetState(id);
+      log("✅ 已发送状态重置");
+    } catch (e) {
+      log(`状态重置失败: ${e.message || e}`);
+    } finally {
+      lockControlsBusy(false);
     }
   };
 
