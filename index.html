@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>舵机配置工具（Web Serial）</title>
+  <title>舵机配置工具V7（Web Serial / 桌面 Chrome）</title>
   <style>
     :root{color-scheme:light dark}
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"PingFang SC","Microsoft YaHei",sans-serif;max-width:1020px;margin:0 auto;padding:18px;line-height:1.45}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"PingFang SC","Microsoft YaHei",sans-serif;max-width:1040px;margin:0 auto;padding:18px;line-height:1.45}
     h1{font-size:20px;margin:0 0 10px}
     h2{font-size:16px;margin:0 0 10px}
     .card{border:1px solid rgba(127,127,127,.25);border-radius:14px;padding:14px;margin:12px 0;box-shadow:0 2px 10px rgba(0,0,0,.05)}
@@ -31,7 +31,7 @@
   </style>
 </head>
 <body>
-  <h1>舵机配置工具V6（Web Serial / 桌面 Chrome）</h1>
+  <h1>舵机配置工具V7（Web Serial / 桌面 Chrome）</h1>
   <div class="small">
     <span class="pill" id="statusPill">未连接</span>
     <span class="pill">外接电源｜TX/RX 交叉｜GND 共地</span>
@@ -43,11 +43,11 @@
         <button id="btnConnect">连接串口</button>
         <button id="btnDisconnect" disabled>断开</button>
       </div>
-      <label>波特率 <input id="baud" inputmode="numeric" value="1000000"/></label>
+      <label>波特率 <input id="baud" inputmode="numeric"/></label>
     </div>
     <div class="row small" style="margin-top:10px;justify-content:space-between">
       <span class="warn">Web Serial 仅在 HTTPS（或 http://localhost）可用；请使用桌面 Chrome/Edge。</span>
-      <label style="gap:10px"><input id="safeOneServo" type="checkbox" checked/>写操作前提醒“一次只接1个舵机”</label>
+      <label style="gap:10px"><input id="safeOneServo" type="checkbox"/>写操作前提醒“一次只接1个舵机”</label>
     </div>
   </div>
 
@@ -55,8 +55,8 @@
     <div class="card">
       <h2>流水线配置（自动监控插拔）</h2>
       <div class="row">
-        <label>起始ID <input id="pipeStart" inputmode="numeric" value="1" /></label>
-        <label>结束ID <input id="pipeEnd" inputmode="numeric" value="6" /></label>
+        <label>起始ID <input id="pipeStart" inputmode="numeric"/></label>
+        <label>结束ID <input id="pipeEnd" inputmode="numeric"/></label>
       </div>
       <div class="row" style="margin-top:10px">
         <button id="btnPipeStart" disabled>开始流水线</button>
@@ -69,17 +69,19 @@
     <div class="card">
       <h2>扫描与实时位置</h2>
       <div class="row">
-        <label>扫描起始 <input id="scanStart" inputmode="numeric" value="1"/></label>
-        <label>扫描结束 <input id="scanEnd" inputmode="numeric" value="20"/></label>
+        <label>扫描起始 <input id="scanStart" inputmode="numeric"/></label>
+        <label>扫描结束 <input id="scanEnd" inputmode="numeric"/></label>
         <button id="btnScanOnce" disabled>扫描一次</button>
         <span class="pill" id="scanState">未扫描</span>
       </div>
       <div class="row" style="margin-top:10px">
-        <label style="gap:10px"><input id="posEnable" type="checkbox" disabled checked/>自动刷新位置</label>
-        <label>刷新ms <input id="posPeriod" class="mini" inputmode="numeric" value="50"/></label>
+        <label style="gap:10px"><input id="posEnable" type="checkbox" disabled/>自动刷新位置/在线状态</label>
+        <label>刷新ms <input id="posPeriod" class="mini" inputmode="numeric"/></label>
         <span class="pill" id="posState">未运行</span>
       </div>
-      <p class="small">位置刷新仅读取 0x38 的 2 字节（更省通讯）。v6 修复：扫描只认“匹配ID的回包”，避免误报大量在线ID。</p>
+      <p class="small">
+        扫描只把<strong>在线舵机</strong>加入表格；之后不再自动增删行。实时刷新会更新在线状态：连续读不到位置会标记为离线。
+      </p>
     </div>
   </div>
 
@@ -94,7 +96,7 @@
       </thead>
       <tbody id="tbody"></tbody>
     </table>
-    <p class="small">提示：为避免“位置刷新把输入框清空”，表格采用“增量更新”而不是每次重绘整表。</p>
+    <p class="small">刷新页面后会从本地存储恢复输入与表格（但串口连接需要重新点“连接串口”授权）。</p>
   </div>
 
   <div class="card">
@@ -108,17 +110,25 @@
 
 <script>
 (() => {
-  // ====== 常量（与你脚本一致）======
   const BROADCAST_ID = 0xFE;
   const ADDR_ID     = 0x05;
   const ADDR_LOCK   = 0x37;
   const ADDR_TORQUE = 0x28; // 40
 
-  // 串口状态
+  const LS_KEY = "servo_tool_state_v7";
+  function loadState(){
+    try{ return JSON.parse(localStorage.getItem(LS_KEY) || "{}"); }catch{ return {}; }
+  }
+  function saveState(partial){
+    const cur = loadState();
+    const next = Object.assign({}, cur, partial);
+    localStorage.setItem(LS_KEY, JSON.stringify(next));
+  }
+
   let port=null, writer=null, reader=null, readLoopRunning=false;
   let rxBuf=[];
 
-  // 串口互斥锁：避免扫描/位置刷新/按钮写入并发导致串口回包串台
+  // 串口互斥锁：避免并发串台
   let opChain = Promise.resolve();
   function withLock(fn){
     const next = opChain.then(fn, fn);
@@ -126,7 +136,7 @@
     return next;
   }
 
-  // 设备表：id -> {online, pos, ts, row:{...elements}}
+  // 设备表：id -> {online, pos, ts, failCount, row}
   const devices = new Map();
 
   // UI
@@ -166,7 +176,55 @@
   }
   function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
-  // ====== 协议：校验与组包 ======
+  // 恢复输入 & 表格
+  function restoreFromLocalStorage(){
+    const s = loadState();
+    baudEl.value = String(s.baud ?? 1000000);
+    safeOneServoEl.checked = !!(s.safeOneServo ?? true);
+    pipeStartEl.value = String(s.pipeStart ?? 1);
+    pipeEndEl.value = String(s.pipeEnd ?? 6);
+    scanStartEl.value = String(s.scanStart ?? 1);
+    scanEndEl.value = String(s.scanEnd ?? 20);
+    posEnableEl.checked = !!(s.posEnable ?? true);
+    posPeriodEl.value = String(s.posPeriod ?? 50);
+
+    const ids = Array.isArray(s.ids) ? s.ids : [];
+    for (const id of ids){
+      if (!Number.isFinite(id)) continue;
+      ensureDevice(id);
+      const rowState = (s.rowState && s.rowState[String(id)]) ? s.rowState[String(id)] : null;
+      if (rowState && typeof rowState.newIdInput === "string"){
+        devices.get(id).row.input.value = rowState.newIdInput;
+      }
+      updateRow(id);
+    }
+  }
+  function persistInputs(){
+    saveState({
+      baud: Number(baudEl.value||1000000),
+      safeOneServo: safeOneServoEl.checked,
+      pipeStart: Number(pipeStartEl.value||1),
+      pipeEnd: Number(pipeEndEl.value||6),
+      scanStart: Number(scanStartEl.value||1),
+      scanEnd: Number(scanEndEl.value||20),
+      posEnable: posEnableEl.checked,
+      posPeriod: Number(posPeriodEl.value||50),
+    });
+  }
+  function persistTableState(){
+    const ids = Array.from(devices.keys()).sort((a,b)=>a-b);
+    const rowState = {};
+    for (const id of ids){
+      const d = devices.get(id);
+      if (d.row) rowState[String(id)] = { newIdInput: d.row.input.value || "" };
+    }
+    saveState({ ids, rowState });
+  }
+  [baudEl, safeOneServoEl, pipeStartEl, pipeEndEl, scanStartEl, scanEndEl, posEnableEl, posPeriodEl].forEach(el=>{
+    el.addEventListener("change", () => persistInputs());
+  });
+
+  // 协议
   function calcChecksum(dataBytes) {
     let sum=0;
     for (const b of dataBytes) sum += (b & 0xFF);
@@ -177,13 +235,11 @@
     return new Uint8Array([0xFF, 0xFF, ...dataBytes, chk]);
   }
   function verifyFrameChecksum(frame){
-    // frame: FF FF ID LEN ... CHK
     if (!frame || frame.length < 6) return false;
-    const id = frame[2];
     const len = frame[3];
     const total = 2 + 1 + 1 + len;
     if (frame.length !== total) return false;
-    const dataBytes = frame.slice(2, frame.length - 1); // ID..last-1
+    const dataBytes = frame.slice(2, frame.length - 1);
     const chk = calcChecksum(dataBytes);
     return chk === frame[frame.length - 1];
   }
@@ -197,7 +253,6 @@
     await writer.write(u8);
   }
 
-  // ====== 读取：缓存收到的字节 ======
   async function startReadLoop(){
     reader = port.readable.getReader();
     readLoopRunning = true;
@@ -220,14 +275,13 @@
   async function stopReadLoop(){
     readLoopRunning = false;
     if (reader){
-      try{ await reader.cancel(); } catch{}
-      try{ reader.releaseLock(); } catch{}
+      try{ await reader.cancel(); }catch{}
+      try{ reader.releaseLock(); }catch{}
       reader = null;
     }
     rxBuf=[];
   }
 
-  // ====== 帧解析：从 rxBuf 中抽取一帧 ======
   function tryPopFrame(){
     for (let i=0; i+6<=rxBuf.length; i++){
       if (rxBuf[i]!==0xFF || rxBuf[i+1]!==0xFF) continue;
@@ -236,7 +290,6 @@
       if (i+total > rxBuf.length) return null;
       const frame = rxBuf.slice(i, i+total);
       rxBuf = rxBuf.slice(i+total);
-      // 校验失败就继续找下一帧（避免噪声导致误报在线）
       if (!verifyFrameChecksum(frame)) continue;
       return frame;
     }
@@ -250,38 +303,40 @@
       const fr = tryPopFrame();
       if (!fr){ await sleep(1); continue; }
       const id = fr[2];
-      if (expectedId == null || id === expectedId) return fr; // expectedId=null 表示接受任意
-      // 不匹配：丢弃，继续等（避免把别的命令回包当成当前 ping）
+      if (expectedId == null || id === expectedId) return fr;
     }
     return null;
   }
 
-  // ====== 基本指令（严格匹配回包ID，避免扫描误报） ======
   async function ping(id, timeoutMs=90){
     return withLock(async () => {
-      const data = [id & 0xFF, 0x02, 0x01];
-      const pkt = buildPacket(data);
+      const pkt = buildPacket([id & 0xFF, 0x02, 0x01]);
       rxBuf = [];
       await writeRaw(pkt);
       const fr = await waitFrame(id, timeoutMs);
       return !!fr;
     });
   }
-
+  async function pingBroadcastAny(timeoutMs=90){
+    return withLock(async () => {
+      const pkt = buildPacket([BROADCAST_ID, 0x02, 0x01]);
+      rxBuf = [];
+      await writeRaw(pkt);
+      const fr = await waitFrame(null, timeoutMs);
+      return !!fr;
+    });
+  }
   async function writeReg(id, address, value){
     return withLock(async () => {
-      const data = [id & 0xFF, 0x04, 0x03, address & 0xFF, value & 0xFF];
-      const pkt = buildPacket(data);
+      const pkt = buildPacket([id & 0xFF, 0x04, 0x03, address & 0xFF, value & 0xFF]);
       rxBuf = [];
       await writeRaw(pkt);
       await sleep(45);
     });
   }
-
   async function readReg(id, address, size, timeoutMs=35){
     return withLock(async () => {
-      const data = [id & 0xFF, 0x04, 0x02, address & 0xFF, size & 0xFF];
-      const pkt = buildPacket(data);
+      const pkt = buildPacket([id & 0xFF, 0x04, 0x02, address & 0xFF, size & 0xFF]);
       rxBuf = [];
       await writeRaw(pkt);
       const fr = await waitFrame(id, timeoutMs);
@@ -293,19 +348,6 @@
     });
   }
 
-  // ====== 广播 ping（流水线插入检测用：接受任意回包）======
-  async function pingBroadcastAny(timeoutMs=90){
-    return withLock(async () => {
-      const data = [BROADCAST_ID, 0x02, 0x01];
-      const pkt = buildPacket(data);
-      rxBuf = [];
-      await writeRaw(pkt);
-      const fr = await waitFrame(null, timeoutMs);
-      return !!fr;
-    });
-  }
-
-  // ====== 改号（广播版：流水线）======
   async function changeIdBroadcastLikeScript(newId){
     newId = Number(newId);
     if (!(newId>=1 && newId<=253)) throw new Error("ID 范围 1~253");
@@ -314,13 +356,10 @@
     await writeReg(BROADCAST_ID, ADDR_ID, newId);
     await sleep(150);
     await writeReg(newId, ADDR_LOCK, 1);
-
     let ok = await ping(newId, 160);
     if (!ok){ await sleep(250); ok = await ping(newId, 160); }
     if (!ok) throw new Error("验证失败");
   }
-
-  // ====== 改号（定向版：表格单行）======
   async function changeIdTargeted(oldId, newId){
     oldId = Number(oldId); newId = Number(newId);
     if (!(oldId>=0 && oldId<=253)) throw new Error("旧ID不合法");
@@ -330,31 +369,29 @@
     await writeReg(oldId, ADDR_ID, newId);
     await sleep(150);
     await writeReg(newId, ADDR_LOCK, 1);
-
     let ok = await ping(newId, 160);
     if (!ok){ await sleep(250); ok = await ping(newId, 160); }
     if (!ok) throw new Error("验证失败");
   }
 
-  async function writeMiddleCalibrate(id){
-    await writeReg(id, 0x28, 128);
-  }
+  async function writeMiddleCalibrate(id){ await writeReg(id, 0x28, 128); }
   async function resetState(id){
     return withLock(async () => {
-      const data = [id & 0xFF, 0x02, 0x0A];
-      const pkt = buildPacket(data);
+      const pkt = buildPacket([id & 0xFF, 0x02, 0x0A]);
       rxBuf = [];
       await writeRaw(pkt);
       await sleep(55);
     });
   }
 
-  // ====== 表格：增量更新，避免输入框丢失 & 提升刷新速度 ======
+  // 表格：只 hint 在线舵机行；只在扫描更新行集合
+  function ensureDevice(id){
+    if (!devices.has(id)) devices.set(id, {online:false, pos:null, ts:null, failCount:0, row:null});
+    ensureRow(id);
+  }
   function ensureRow(id){
-    if (devices.has(id) && devices.get(id).row) return devices.get(id).row;
-
-    if (!devices.has(id)) devices.set(id, {online:false, pos:null, ts:null});
     const d = devices.get(id);
+    if (d.row) return d.row;
 
     const tr = document.createElement("tr");
     tr.dataset.id = String(id);
@@ -369,7 +406,6 @@
     input.className = "mini";
     input.inputMode = "numeric";
     input.placeholder = "新ID";
-    input.dataset.newid = String(id);
     const btnChange = document.createElement("button");
     btnChange.textContent = "改ID";
     btnChange.dataset.action = "change";
@@ -395,24 +431,25 @@
     tr.append(tdId, tdOnline, tdPos, tdTs, tdChange, tdMid, tdRst);
     tbody.appendChild(tr);
 
+    input.addEventListener("input", () => persistTableState());
     d.row = {tr, tdOnline, tdPos, tdTs, input, btnChange, btnMid, btnRst};
     return d.row;
   }
-
   function updateRow(id){
     const d = devices.get(id);
-    const r = ensureRow(id);
-    r.tdOnline.textContent = d.online ? "✅" : "";
-    r.tdPos.textContent = (d.pos ?? "");
-    r.tdTs.textContent = d.ts ? new Date(d.ts).toLocaleTimeString() : "";
+    if (!d || !d.row) return;
+    d.row.tdOnline.textContent = d.online ? "✅" : "";
+    d.row.tdPos.textContent = (d.pos ?? "");
+    d.row.tdTs.textContent = d.ts ? new Date(d.ts).toLocaleTimeString() : "";
     const dis = !d.online || !port;
-    r.btnChange.disabled = dis;
-    r.btnMid.disabled = dis;
-    r.btnRst.disabled = dis;
+    d.row.btnChange.disabled = dis;
+    d.row.btnMid.disabled = dis;
+    d.row.btnRst.disabled = dis;
   }
-
-  function updateAllRows(){
-    for (const id of Array.from(devices.keys()).sort((a,b)=>a-b)) updateRow(id);
+  function removeRow(id){
+    const d = devices.get(id);
+    if (d && d.row && d.row.tr) d.row.tr.remove();
+    devices.delete(id);
   }
 
   tbody.addEventListener("click", async (ev) => {
@@ -424,23 +461,25 @@
 
     try{
       if (safeOneServoEl.checked){
-        const ok = confirm("写操作前确认：当前总线上只有 1 个舵机？\n（流水线强依赖只接1个；单行改ID是定向写，仍建议只接1个。）");
+        const ok = confirm("写操作前确认：当前总线上只有 1 个舵机？\n（单行改ID为定向写，但仍建议只接1个。）");
         if (!ok) return;
       }
       btn.disabled = true;
+      const d = devices.get(id);
+      if (!d || !d.online) throw new Error("当前舵机不在线");
 
       if (action === "change"){
-        const row = ensureRow(id);
-        const newId = Number(row.input.value);
+        const newId = Number(d.row.input.value);
         if (!Number.isFinite(newId)) throw new Error("请输入新ID");
         log(`改ID（定向）：${id} -> ${newId}`);
         await changeIdTargeted(id, newId);
         log("✅ 改ID成功");
-        // 更新表：旧ID离线，新ID加入并标在线
-        if (!devices.has(newId)) devices.set(newId, {online:true, pos:null, ts:Date.now(), row:null});
-        const od = devices.get(id); od.online = false;
-        const nd = devices.get(newId); nd.online = true; nd.ts = Date.now();
-        updateAllRows();
+        removeRow(id);
+        ensureDevice(newId);
+        devices.get(newId).online = true;
+        devices.get(newId).ts = Date.now();
+        updateRow(newId);
+        persistTableState();
       } else if (action === "mid"){
         log(`写40=128：ID=${id}`);
         await writeMiddleCalibrate(id);
@@ -457,7 +496,7 @@
     }
   });
 
-  // ====== 扫描一次（v6：严格匹配回包ID，避免误报） ======
+  // 扫描一次：只显示在线舵机
   async function scanOnce(){
     const start = Number(scanStartEl.value);
     const end = Number(scanEndEl.value);
@@ -466,19 +505,33 @@
       return;
     }
     scanStateEl.textContent = "扫描中...";
+
+    const onlineIds = [];
     for (let id=start; id<=end; id++){
       const ok = await ping(id, 70);
-      if (!devices.has(id)) devices.set(id, {online:false, pos:null, ts:null, row:null});
+      if (ok) onlineIds.push(id);
+    }
+
+    // 扫描时更新行集合：清空并重建（只在线）
+    tbody.innerHTML = "";
+    devices.clear();
+
+    for (const id of onlineIds){
+      ensureDevice(id);
       const d = devices.get(id);
-      d.online = ok;
-      if (ok) d.ts = Date.now();
+      d.online = true;
+      d.ts = Date.now();
       updateRow(id);
     }
-    scanStateEl.textContent = "扫描完成";
+
+    scanStateEl.textContent = `扫描完成：在线 ${onlineIds.length} 个`;
+    persistInputs();
+    persistTableState();
     if (posEnableEl.checked) ensurePosLoop();
   }
 
-  // ====== 实时位置（只读 0x38 两字节），并按周期目标对齐 ======
+  // 实时位置/在线刷新：读不到位置 => 离线
+  const failThreshold = 3;
   let posLoopRunning=false;
   async function posLoop(){
     posLoopRunning = true;
@@ -487,14 +540,26 @@
       const cycleStart = performance.now();
       const period = Math.max(20, Number(posPeriodEl.value)||50);
 
-      const ids = Array.from(devices.keys()).filter(id => devices.get(id).online);
+      const ids = Array.from(devices.keys());
       for (const id of ids){
-        const params = await readReg(id, 0x38, 2, 28);
-        if (!params || params.length < 2) continue;
-        const pos = params[0] | (params[1]<<8);
         const d = devices.get(id);
+        if (!d) continue;
+
+        const params = await readReg(id, 0x38, 2, 30);
+        if (!params || params.length < 2){
+          d.failCount = (d.failCount || 0) + 1;
+          if (d.failCount >= failThreshold){
+            d.online = false;
+            d.pos = null;
+          }
+          updateRow(id);
+          continue;
+        }
+        const pos = params[0] | (params[1]<<8);
         d.pos = pos;
         d.ts = Date.now();
+        d.failCount = 0;
+        d.online = true;
         updateRow(id);
       }
 
@@ -505,7 +570,6 @@
     }
     posStateEl.textContent = "已停止";
   }
-
   function ensurePosLoop(){
     if (!posEnableEl.checked || !port) return;
     if (posLoopRunning) return;
@@ -514,11 +578,12 @@
   function stopPosLoop(){ posLoopRunning = false; }
 
   posEnableEl.addEventListener("change", () => {
+    persistInputs();
     if (posEnableEl.checked) ensurePosLoop();
     else stopPosLoop();
   });
 
-  // ====== 流水线（保持 v5 的单循环+去抖，但用广播 any 回包） ======
+  // 流水线（与 v6 一致）
   let pipeRunning=false;
   let pipeTarget=1, pipeStart=1, pipeEnd=6;
   let pipeState="IDLE";
@@ -547,9 +612,8 @@
           pipeStateEl.textContent = `已写入 ID=${pipeTarget}，请拔掉舵机...`;
         } else if (pipeState === "WAIT_REMOVE"){
           const online = await ping(pipeTarget, 90);
-          if (online){
-            removeLostSince = null;
-          } else {
+          if (online){ removeLostSince = null; }
+          else {
             if (removeLostSince == null) removeLostSince = performance.now();
             if (performance.now() - removeLostSince >= 1000){
               if (pipeTarget >= pipeEnd){
@@ -579,7 +643,6 @@
       pipeStateEl.textContent = "未运行";
     }
   }
-
   function startPipeline(){
     pipeStart = Number(pipeStartEl.value);
     pipeEnd = Number(pipeEndEl.value);
@@ -602,7 +665,6 @@
     log(`流水线启动：将配置 ID=${pipeStart}~${pipeEnd}。请插入第一只舵机...`);
     pipeLoop();
   }
-
   function stopPipeline(){
     pipeRunning = false;
     btnPipeStart.disabled = !port;
@@ -611,7 +673,7 @@
     log("流水线已中断");
   }
 
-  // ====== 连接/断开 ======
+  // 连接/断开
   function setUiConnected(connected){
     btnConnect.disabled = connected;
     btnDisconnect.disabled = !connected;
@@ -624,14 +686,14 @@
 
     posEnableEl.disabled = !connected;
     posStateEl.textContent = "未运行";
+
     scanStateEl.textContent = "未扫描";
     pipeStateEl.textContent = "未运行";
 
     if (!connected) setStatus("未连接");
     else setStatus("已连接", "ok");
 
-    // 按钮可用性更新
-    updateAllRows();
+    for (const id of devices.keys()) updateRow(id);
   }
 
   btnConnect.onclick = async () => {
@@ -674,11 +736,13 @@
 
   // 绑定
   btnScanOnce.onclick = () => scanOnce().catch(e=>log(`扫描失败: ${e.message||e}`));
-  btnPipeStart.onclick = () => startPipeline();
+  btnPipeStart.onclick = () => { persistInputs(); startPipeline(); };
   btnPipeStop.onclick = () => stopPipeline();
   btnClearLog.onclick = () => { logEl.textContent = ""; };
 
-  // 初始
+  // 启动：恢复并保存一次
+  restoreFromLocalStorage();
+  persistInputs();
   setUiConnected(false);
 })();
 </script>
