@@ -1,0 +1,1253 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LeRobot 配置工具V1（Web Serial / 桌面 Chrome）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      max-width: 1280px; margin: 0 auto; padding: 16px; line-height: 1.45;
+    }
+    h1 { font-size: 18px; margin: 0; }
+    h2 { font-size: 15px; margin: 0 0 10px; }
+    h3 { font-size: 14px; margin: 14px 0 8px; }
+    .small { font-size: 12px; opacity: .85; }
+    .muted { opacity: .85; }
+    .pill {
+      display:inline-block; padding:2px 10px; border:1px solid rgba(127,127,127,.35);
+      border-radius:999px; font-size:12px;
+    }
+    .ok { color:#0a7a2f; }
+    .warn { color:#b45309; }
+    .btn {
+      padding: 8px 10px; border-radius: 12px; border:1px solid rgba(127,127,127,.35);
+      cursor:pointer; background:transparent; font:inherit;
+    }
+    .btn:disabled { opacity: .45; cursor:not-allowed; }
+    input, select {
+      padding: 7px 9px; border-radius: 10px; border:1px solid rgba(127,127,127,.35); font:inherit;
+    }
+    textarea {
+      width: 100%; min-height: 120px; padding: 10px 12px; border-radius: 14px;
+      border:1px solid rgba(127,127,127,.35); font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      resize: vertical;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border-bottom: 1px solid rgba(127,127,127,.22); padding: 7px 8px; text-align:left; font-size: 13px; vertical-align: top; }
+    th { opacity: .9; }
+    .card {
+      border:1px solid rgba(127,127,127,.25); border-radius: 16px; padding: 14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.05);
+    }
+    .header {
+      position: sticky; top: 0; z-index: 10; background: Canvas;
+      border-bottom: 1px solid rgba(127,127,127,.18); padding: 10px 0; margin-bottom: 14px;
+    }
+    .header-inner { display:flex; align-items:center; justify-content:space-between; gap: 12px; }
+    .layout { display:grid; grid-template-columns: 420px 1fr; gap: 14px; align-items:start; }
+    @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } }
+    .row { display:flex; gap: 10px; align-items:center; flex-wrap: wrap; }
+    .spacer { flex:1; }
+    pre {
+      background: rgba(0,0,0,.85); color:#e8eefc; padding: 12px; border-radius: 16px;
+      overflow:auto; max-height: 240px; margin: 0;
+      font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .tabs { display:flex; gap: 8px; flex-wrap: wrap; }
+    .tab {
+      padding: 6px 10px; border-radius: 999px; border:1px solid rgba(127,127,127,.35);
+      cursor:pointer; user-select:none;
+    }
+    .tab.active { outline: 2px solid rgba(127,127,127,.45); }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+    dialog {
+      border:none; border-radius: 18px; padding: 0; max-width: min(840px, 94vw);
+      box-shadow: 0 12px 40px rgba(0,0,0,.3);
+    }
+    dialog::backdrop { background: rgba(0,0,0,.5); }
+    .modal { padding: 14px; }
+    .modalHeader { display:flex; justify-content:space-between; align-items:center; gap: 10px; margin-bottom: 8px; }
+    .mono { font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .kpi { font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-inner">
+      <div>
+        <h1>LeRobot 配置工具V1（Web Serial / 桌面 Chrome）</h1>
+        <div class="small">
+          <span class="pill" id="supportPill">检查中…</span>
+          <span class="pill">HTTPS 或 localhost 才能用 Web Serial</span>
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn" id="btnClearLog">清空日志</button>
+        <span class="pill" id="dirtyPill">已保存</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="card">
+      <h2>Step 1：设备与校准库</h2>
+
+      <h3>串口（主臂 / 从臂）</h3>
+      <div class="grid2">
+        <div class="card" style="padding:12px">
+          <div class="row">
+            <strong>主臂（Leader）</strong>
+            <span class="spacer"></span>
+            <button class="btn" id="btnAddLeaderPort">添加串口</button>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <select id="selLeaderPort" style="width:100%"></select>
+          </div>
+          <div class="small muted" id="leaderPortHint" style="margin-top:6px">未选择</div>
+        </div>
+
+        <div class="card" style="padding:12px">
+          <div class="row">
+            <strong>从臂（Follower）</strong>
+            <span class="spacer"></span>
+            <button class="btn" id="btnAddFollowerPort">添加串口</button>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <select id="selFollowerPort" style="width:100%"></select>
+          </div>
+          <div class="small muted" id="followerPortHint" style="margin-top:6px">未选择</div>
+        </div>
+      </div>
+
+      <h3>摄像头（可选）</h3>
+      <div class="row">
+        <button class="btn" id="btnEnableCamera">启用摄像头权限并扫描</button>
+        <span class="small muted">（第一次需要授权）</span>
+      </div>
+      <div class="grid2" style="margin-top:8px">
+        <label>主摄像头
+          <select id="selCamMain" style="width:100%"></select>
+        </label>
+        <label>副摄像头
+          <select id="selCamAux" style="width:100%"></select>
+        </label>
+      </div>
+
+      <h3>校准库（HF_LEROBOT_CALIBRATION）</h3>
+      <div class="row">
+        <button class="btn" id="btnPickCalibDir">选择校准目录</button>
+        <button class="btn" id="btnRescanCalib" disabled>刷新校准库</button>
+        <span class="pill" id="calibState">未选择目录</span>
+      </div>
+      <div class="small muted" style="margin-top:8px">
+        说明：浏览器无法自动读取你电脑的目录，必须你在这里选择一次 LeRobot 的 calibration 文件夹。
+      </div>
+
+      <div style="margin-top:10px; max-height:220px; overflow:auto; border:1px solid rgba(127,127,127,.18); border-radius: 14px;">
+        <table>
+          <thead>
+            <tr><th>选择</th><th>ID</th><th>文件名</th><th>修改时间</th><th>操作</th></tr>
+          </thead>
+          <tbody id="calibTbody"></tbody>
+        </table>
+      </div>
+
+      <h2 style="margin-top:14px">Step 2：参数与命令生成</h2>
+
+      <div class="grid2">
+        <div class="card" style="padding:12px">
+          <div class="row">
+            <strong>主臂（teleop）</strong>
+            <span class="spacer"></span>
+            <select id="modeLeader">
+              <option value="existing">使用已有校准</option>
+              <option value="new">创建新校准</option>
+            </select>
+          </div>
+          <div style="margin-top:8px">
+            <label id="leaderExistingWrap">选择校准 ID
+              <select id="selLeaderId" style="width:100%"></select>
+            </label>
+            <label id="leaderNewWrap" style="display:none">新建校准 ID
+              <input id="inpLeaderNewId" placeholder="例如: my_awesome_leader_arm" style="width:100%"/>
+            </label>
+          </div>
+        </div>
+
+        <div class="card" style="padding:12px">
+          <div class="row">
+            <strong>从臂（robot）</strong>
+            <span class="spacer"></span>
+            <select id="modeFollower">
+              <option value="existing">使用已有校准</option>
+              <option value="new">创建新校准</option>
+            </select>
+          </div>
+          <div style="margin-top:8px">
+            <label id="followerExistingWrap">选择校准 ID
+              <select id="selFollowerId" style="width:100%"></select>
+            </label>
+            <label id="followerNewWrap" style="display:none">新建校准 ID
+              <input id="inpFollowerNewId" placeholder="例如: my_awesome_follower_arm" style="width:100%"/>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:10px">
+        <label>波特率
+          <input id="inpBaud" inputmode="numeric" style="width:100%" />
+        </label>
+        <label>关节 ID 列表（用于实时核对）
+          <input id="inpJointIds" placeholder="例如: 1,2,3,4,5,6" style="width:100%" />
+        </label>
+      </div>
+
+      <div class="grid2" style="margin-top:10px">
+        <label>相机配置（可选，JSON）
+          <input id="inpCameraJson" placeholder='例如: {"front":{"type":"opencv","index_or_path":0}}' style="width:100%"/>
+        </label>
+        <label>display_data
+          <select id="selDisplayData" style="width:100%">
+            <option value="true">true</option>
+            <option value="false">false</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="btnOpenCmd">打开命令生成器</button>
+        <button class="btn" id="btnOpenLive">打开实时核对</button>
+        <span class="spacer"></span>
+        <span class="small muted">刷新页面会保留你的选择（串口需重新授权是浏览器限制）</span>
+      </div>
+
+      <p class="small warn" style="margin-top:12px">
+        注意：该页面不直接执行命令（浏览器无终端权限），但可一键复制命令或下载脚本（.sh / .ps1）。
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:8px">
+        <h2 style="margin:0">配置摘要</h2>
+        <span class="spacer"></span>
+        <span class="pill" id="summaryPill">未就绪</span>
+      </div>
+
+      <div class="grid2">
+        <div class="card" style="padding:12px">
+          <strong>主臂（Leader / teleop）</strong>
+          <div class="kpi small muted" id="kpiLeader"></div>
+        </div>
+        <div class="card" style="padding:12px">
+          <strong>从臂（Follower / robot）</strong>
+          <div class="kpi small muted" id="kpiFollower"></div>
+        </div>
+      </div>
+
+      <h3>建议工作流</h3>
+      <ol class="small muted" style="margin-top:6px">
+        <li>选择校准目录 → 刷新校准库 → 主/从臂选择已有校准 ID（或输入新 ID）。</li>
+        <li>添加并选择主/从臂串口（各自对应一个 MotorBus）。</li>
+        <li>（可选）启用摄像头并选择设备。</li>
+        <li>打开“命令生成器”，一键复制或下载脚本去执行。</li>
+        <li>打开“实时核对”，确认主/从臂关节位置刷新正常。</li>
+      </ol>
+
+      <h3>日志</h3>
+      <pre id="log"></pre>
+    </div>
+  </div>
+
+  <dialog id="dlgCmd">
+    <div class="modal">
+      <div class="modalHeader">
+        <strong>命令生成器</strong>
+        <button class="btn" id="btnCloseCmd">关闭</button>
+      </div>
+
+      <div class="row">
+        <div class="tabs" id="cmdTabs">
+          <div class="tab active" data-os="linux">Linux</div>
+          <div class="tab" data-os="mac">macOS</div>
+          <div class="tab" data-os="win">Windows</div>
+        </div>
+        <span class="spacer"></span>
+        <button class="btn" id="btnCopyCmd">复制</button>
+        <button class="btn" id="btnDownloadScript">下载脚本</button>
+      </div>
+
+      <h3 style="margin-top:10px">遥操作（teleoperate）</h3>
+      <textarea id="txtTeleop" readonly></textarea>
+
+      <div class="grid2" style="margin-top:10px">
+        <div>
+          <h3>校准主臂（leader）</h3>
+          <textarea id="txtCalLeader" readonly></textarea>
+        </div>
+        <div>
+          <h3>校准从臂（follower）</h3>
+          <textarea id="txtCalFollower" readonly></textarea>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:10px">
+        <div>
+          <h3>录制数据（record）</h3>
+          <textarea id="txtRecord" readonly></textarea>
+        </div>
+        <div>
+          <h3>备注</h3>
+          <div class="small muted">
+            <ul>
+              <li>命令模板遵循 LeRobot CLI：<span class="mono">lerobot-teleoperate</span> / <span class="mono">lerobot-calibrate</span> / <span class="mono">lerobot-record</span>。</li>
+              <li>端口由你选择的串口决定：请把 <span class="mono">&lt;LEADER_PORT&gt;</span> / <span class="mono">&lt;FOLLOWER_PORT&gt;</span> 替换为系统端口（如 COM3 / /dev/ttyUSB0 / /dev/tty.usbmodem*）。</li>
+              <li>摄像头 JSON 可选；若为空将不传 <span class="mono">--robot.cameras</span>。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <h3 style="margin-top:10px">导出</h3>
+      <div class="row">
+        <button class="btn" id="btnExportSelectedCalib">导出选中校准（.tar）</button>
+        <button class="btn" id="btnPickDataDir">选择数据目录并导出（.tar）</button>
+        <span class="small muted">（导出需要你手动选择目录；浏览器无法自动访问磁盘路径）</span>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="dlgLive">
+    <div class="modal">
+      <div class="modalHeader">
+        <strong>实时核对（读取关节位置 0x38）</strong>
+        <button class="btn" id="btnCloseLive">关闭</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="btnConnectLeader">连接主臂串口</button>
+        <button class="btn" id="btnConnectFollower">连接从臂串口</button>
+        <span class="spacer"></span>
+        <label class="small">刷新ms <input id="inpLivePeriod" class="mono" inputmode="numeric" style="width:90px"/></label>
+        <button class="btn" id="btnStartLive">开始</button>
+        <button class="btn" id="btnStopLive" disabled>停止</button>
+        <span class="pill" id="liveState">未运行</span>
+      </div>
+
+      <div class="grid2" style="margin-top:10px">
+        <div class="card" style="padding:12px">
+          <div class="row">
+            <strong>主臂关节</strong>
+            <span class="spacer"></span>
+            <span class="pill" id="leaderConnState">未连接</span>
+          </div>
+          <table>
+            <thead><tr><th>ID</th><th>在线</th><th>位置</th></tr></thead>
+            <tbody id="tbodyLeader"></tbody>
+          </table>
+        </div>
+
+        <div class="card" style="padding:12px">
+          <div class="row">
+            <strong>从臂关节</strong>
+            <span class="spacer"></span>
+            <span class="pill" id="followerConnState">未连接</span>
+          </div>
+          <table>
+            <thead><tr><th>ID</th><th>在线</th><th>位置</th></tr></thead>
+            <tbody id="tbodyFollower"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <p class="small muted" style="margin-top:10px">
+        提示：此模块只用于核对位置是否能正常读取，与 LeRobot 命令执行相互独立。
+      </p>
+    </div>
+  </dialog>
+
+<script>
+(() => {
+  const LS_KEY = "lerobot_cfg_tool_v1";
+  const $ = (id) => document.getElementById(id);
+  const logEl = $("log");
+  const dirtyPill = $("dirtyPill");
+  const supportPill = $("supportPill");
+
+  const state = {
+    calibDirHandle: null,
+    calibFiles: [],
+    selectedCalibIds: new Set(),
+
+    ports: [],
+    leaderPortKey: "",
+    followerPortKey: "",
+
+    cams: [],
+    camMain: "",
+    camAux: "",
+
+    modeLeader: "existing",
+    modeFollower: "existing",
+    leaderId: "",
+    followerId: "",
+    leaderNewId: "",
+    followerNewId: "",
+
+    baud: 1000000,
+    jointIds: "1,2,3,4,5,6",
+    cameraJson: "",
+    displayData: "true",
+  };
+
+  function log(msg) {
+    const t = new Date().toLocaleTimeString();
+    logEl.textContent += `[${t}] ${msg}\\n`;
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function setDirty(isDirty) {
+    dirtyPill.textContent = isDirty ? "未保存" : "已保存";
+    dirtyPill.className = "pill " + (isDirty ? "warn" : "");
+  }
+  function saveToLS() {
+    const save = {
+      leaderPortKey: state.leaderPortKey,
+      followerPortKey: state.followerPortKey,
+      camMain: state.camMain,
+      camAux: state.camAux,
+      modeLeader: state.modeLeader,
+      modeFollower: state.modeFollower,
+      leaderId: state.leaderId,
+      followerId: state.followerId,
+      leaderNewId: state.leaderNewId,
+      followerNewId: state.followerNewId,
+      baud: state.baud,
+      jointIds: state.jointIds,
+      cameraJson: state.cameraJson,
+      displayData: state.displayData,
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(save));
+    setDirty(false);
+  }
+  function loadFromLS() {
+    try {
+      const s = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+      Object.assign(state, s);
+    } catch {}
+  }
+  function bindAutoSave(el, getter) {
+    el.addEventListener("change", () => { getter(); setDirty(true); saveToLS(); renderAll(); });
+    el.addEventListener("input", () => { getter(); setDirty(true); });
+    el.addEventListener("blur", () => { getter(); saveToLS(); renderAll(); });
+  }
+
+  loadFromLS();
+
+  const okSerial = ("serial" in navigator);
+  supportPill.textContent = okSerial ? "Web Serial 可用" : "不支持 Web Serial（请用桌面 Chrome/Edge）";
+  supportPill.className = "pill " + (okSerial ? "ok" : "warn");
+
+  function portKeyFromInfo(info) {
+    const vid = info?.usbVendorId ?? "na";
+    const pid = info?.usbProductId ?? "na";
+    return `usb:${vid}:${pid}`;
+  }
+  async function refreshAuthorizedPorts() {
+    if (!okSerial) return;
+    const ports = await navigator.serial.getPorts();
+    state.ports = ports.map((p, idx) => {
+      const info = p.getInfo?.() || {};
+      const key = `${portKeyFromInfo(info)}#${idx}`;
+      const label = info.usbVendorId
+        ? `USB VID:${info.usbVendorId} PID:${info.usbProductId} (#${idx})`
+        : `已授权串口 (#${idx})`;
+      return { key, port: p, info, label };
+    });
+
+    const keys = new Set(state.ports.map(x => x.key));
+    if (state.leaderPortKey && !keys.has(state.leaderPortKey)) state.leaderPortKey = "";
+    if (state.followerPortKey && !keys.has(state.followerPortKey)) state.followerPortKey = "";
+  }
+
+  async function addPortFlow(which) {
+    if (!okSerial) { alert("当前浏览器不支持 Web Serial，请使用桌面 Chrome/Edge"); return; }
+    try {
+      await navigator.serial.requestPort();
+      await refreshAuthorizedPorts();
+      const latest = state.ports[state.ports.length - 1];
+      if (which === "leader") state.leaderPortKey = latest?.key || state.leaderPortKey;
+      else state.followerPortKey = latest?.key || state.followerPortKey;
+      saveToLS();
+      renderAll();
+      log(`已添加串口（${which === "leader" ? "主臂" : "从臂"}）`);
+    } catch (e) {
+      log(`添加串口失败: ${e?.message || e}`);
+    }
+  }
+
+  function getSelectedPort(which) {
+    const key = which === "leader" ? state.leaderPortKey : state.followerPortKey;
+    return state.ports.find(x => x.key === key)?.port || null;
+  }
+  function getSelectedPortLabel(which) {
+    const key = which === "leader" ? state.leaderPortKey : state.followerPortKey;
+    return state.ports.find(x => x.key === key)?.label || "未选择";
+  }
+
+  async function enableAndScanCameras() {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        alert("当前浏览器不支持 getUserMedia");
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      stream.getTracks().forEach(t => t.stop());
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      state.cams = devices.filter(d => d.kind === "videoinput").map(d => ({ deviceId: d.deviceId, label: d.label || "摄像头" }));
+      if (!state.camMain && state.cams[0]) state.camMain = state.cams[0].deviceId;
+      if (!state.camAux && state.cams[1]) state.camAux = state.cams[1].deviceId;
+      saveToLS();
+      renderAll();
+      log(`已扫描摄像头：${state.cams.length} 个`);
+    } catch (e) {
+      log(`摄像头授权/扫描失败: ${e?.message || e}`);
+    }
+  }
+
+  const calibState = $("calibState");
+  const btnRescanCalib = $("btnRescanCalib");
+  const calibTbody = $("calibTbody");
+
+  async function pickCalibrationDir() {
+    try {
+      if (!window.showDirectoryPicker) {
+        alert("当前浏览器不支持 File System Access API（建议桌面 Chrome/Edge）");
+        return;
+      }
+      state.calibDirHandle = await window.showDirectoryPicker();
+      btnRescanCalib.disabled = false;
+      await scanCalibrationDir();
+      renderAll();
+      log("已选择校准目录");
+    } catch (e) {
+      log(`选择目录失败: ${e?.message || e}`);
+    }
+  }
+
+  async function scanCalibrationDir() {
+    state.calibFiles = [];
+    state.selectedCalibIds.clear();
+
+    if (!state.calibDirHandle) {
+      calibState.textContent = "未选择目录";
+      return;
+    }
+    calibState.textContent = "扫描中…";
+
+    const results = [];
+    try {
+      for await (const [name, handle] of state.calibDirHandle.entries()) {
+        if (handle.kind !== "file") continue;
+        const lower = name.toLowerCase();
+        if (!(lower.endsWith(".json") || lower.endsWith(".yaml") || lower.endsWith(".yml"))) continue;
+
+        const file = await handle.getFile();
+        const text = await file.text();
+
+        let id = "";
+        if (lower.endsWith(".json")) {
+          try { id = (JSON.parse(text)?.id ?? "").toString(); } catch {}
+        } else {
+          const m = text.match(/^\\s*id\\s*:\\s*(.+)\\s*$/m);
+          if (m) id = m[1].trim().replace(/^["']|["']$/g, "");
+        }
+
+        if (!id) continue;
+        results.push({ id, filename: name, lastModified: file.lastModified, fileHandle: handle });
+      }
+    } catch (e) {
+      log(`扫描失败: ${e?.message || e}`);
+    }
+
+    results.sort((a,b) => (b.lastModified||0) - (a.lastModified||0));
+    state.calibFiles = results;
+    calibState.textContent = results.length ? `已加载 ${results.length} 个` : "未发现校准文件";
+    renderAll();
+  }
+
+  function renderCalibrationTable() {
+    calibTbody.innerHTML = "";
+    for (const item of state.calibFiles) {
+      const tr = document.createElement("tr");
+
+      const tdSel = document.createElement("td");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = state.selectedCalibIds.has(item.id);
+      cb.addEventListener("change", () => {
+        if (cb.checked) state.selectedCalibIds.add(item.id);
+        else state.selectedCalibIds.delete(item.id);
+      });
+      tdSel.appendChild(cb);
+
+      const tdId = document.createElement("td");
+      tdId.textContent = item.id;
+
+      const tdFn = document.createElement("td");
+      tdFn.textContent = item.filename;
+
+      const tdTm = document.createElement("td");
+      tdTm.textContent = item.lastModified ? new Date(item.lastModified).toLocaleString() : "";
+
+      const tdAct = document.createElement("td");
+      const btn = document.createElement("button");
+      btn.className = "btn";
+      btn.textContent = "下载";
+      btn.addEventListener("click", async () => {
+        try {
+          const file = await item.fileHandle.getFile();
+          await downloadBlob(file, item.filename);
+        } catch (e) {
+          log(`下载失败: ${e?.message || e}`);
+        }
+      });
+      tdAct.appendChild(btn);
+
+      tr.append(tdSel, tdId, tdFn, tdTm, tdAct);
+      calibTbody.appendChild(tr);
+    }
+  }
+
+  function renderIdDropdowns() {
+    const leaderSel = $("selLeaderId");
+    const followerSel = $("selFollowerId");
+    const ids = state.calibFiles.map(x => x.id);
+
+    const fill = (sel, current) => {
+      sel.innerHTML = "";
+      const opt0 = document.createElement("option");
+      opt0.value = "";
+      opt0.textContent = ids.length ? "（请选择）" : "（请先加载校准库）";
+      sel.appendChild(opt0);
+      for (const id of ids) {
+        const o = document.createElement("option");
+        o.value = id;
+        o.textContent = id;
+        sel.appendChild(o);
+      }
+      sel.value = current || "";
+    };
+    fill(leaderSel, state.leaderId);
+    fill(followerSel, state.followerId);
+  }
+
+  function quoteForOS(os, s) {
+    if (s == null) return '""';
+    s = String(s);
+    if (os === "win") return "'" + s.replace(/'/g, "''") + "'";
+    return "'" + s.replace(/'/g, "'\\''") + "'";
+  }
+
+  function buildCommands(os) {
+    const baud = Number(state.baud || 1000000);
+    const displayData = state.displayData === "true" ? "true" : "false";
+    const leaderId = (state.modeLeader === "existing" ? state.leaderId : state.leaderNewId).trim();
+    const followerId = (state.modeFollower === "existing" ? state.followerId : state.followerNewId).trim();
+
+    const leaderPort = "<LEADER_PORT>";
+    const followerPort = "<FOLLOWER_PORT>";
+
+    let camArg = "";
+    const camJson = (state.cameraJson || "").trim();
+    if (camJson) camArg = ` --robot.cameras=${quoteForOS(os, camJson)}`;
+
+    const teleop = [
+      "lerobot-teleoperate",
+      ` --robot.type=${quoteForOS(os, "so101_follower")}`,
+      ` --robot.port=${quoteForOS(os, followerPort)}`,
+      ` --robot.id=${quoteForOS(os, followerId || "my_follower_arm")}`,
+      ` --teleop.type=${quoteForOS(os, "so101_leader")}`,
+      ` --teleop.port=${quoteForOS(os, leaderPort)}`,
+      ` --teleop.id=${quoteForOS(os, leaderId || "my_leader_arm")}`,
+      camArg,
+      ` --display_data=${displayData}`,
+    ].filter(Boolean).join("");
+
+    const calLeader = [
+      "lerobot-calibrate",
+      ` --robot.type=${quoteForOS(os, "so101_leader")}`,
+      ` --robot.port=${quoteForOS(os, leaderPort)}`,
+      ` --robot.id=${quoteForOS(os, leaderId || "my_leader_arm")}`,
+      ` --robot.baud=${baud}`,
+    ].join("");
+
+    const calFollower = [
+      "lerobot-calibrate",
+      ` --robot.type=${quoteForOS(os, "so101_follower")}`,
+      ` --robot.port=${quoteForOS(os, followerPort)}`,
+      ` --robot.id=${quoteForOS(os, followerId || "my_follower_arm")}`,
+      ` --robot.baud=${baud}`,
+    ].join("");
+
+    const record = [
+      "lerobot-record",
+      ` --robot.type=${quoteForOS(os, "so101_follower")}`,
+      ` --robot.port=${quoteForOS(os, followerPort)}`,
+      ` --robot.id=${quoteForOS(os, followerId || "my_follower_arm")}`,
+      ` --teleop.type=${quoteForOS(os, "so101_leader")}`,
+      ` --teleop.port=${quoteForOS(os, leaderPort)}`,
+      ` --teleop.id=${quoteForOS(os, leaderId || "my_leader_arm")}`,
+      camArg,
+      ` --display_data=${displayData}`,
+    ].filter(Boolean).join("");
+
+    const header = "# 请把 <LEADER_PORT> / <FOLLOWER_PORT> 替换为系统端口（如 COM3 / /dev/ttyUSB0 / /dev/tty.usbmodem*）\\n";
+    return { teleop: header + teleop, calLeader: header + calLeader, calFollower: header + calFollower, record: header + record };
+  }
+
+  function renderPortsUI() {
+    const selLeaderPort = $("selLeaderPort");
+    const selFollowerPort = $("selFollowerPort");
+    const leaderHint = $("leaderPortHint");
+    const followerHint = $("followerPortHint");
+
+    const fill = (sel, currentKey) => {
+      sel.innerHTML = "";
+      const opt0 = document.createElement("option");
+      opt0.value = "";
+      opt0.textContent = state.ports.length ? "（请选择）" : "（请先添加串口）";
+      sel.appendChild(opt0);
+      for (const p of state.ports) {
+        const o = document.createElement("option");
+        o.value = p.key;
+        o.textContent = p.label;
+        sel.appendChild(o);
+      }
+      sel.value = currentKey || "";
+    };
+
+    fill(selLeaderPort, state.leaderPortKey);
+    fill(selFollowerPort, state.followerPortKey);
+
+    leaderHint.textContent = "当前选择：" + getSelectedPortLabel("leader");
+    followerHint.textContent = "当前选择：" + getSelectedPortLabel("follower");
+  }
+
+  function renderSummary() {
+    const kpiLeader = $("kpiLeader");
+    const kpiFollower = $("kpiFollower");
+    const summaryPill = $("summaryPill");
+
+    const leaderId = (state.modeLeader === "existing" ? state.leaderId : state.leaderNewId).trim();
+    const followerId = (state.modeFollower === "existing" ? state.followerId : state.followerNewId).trim();
+
+    kpiLeader.innerHTML = [
+      `串口：${getSelectedPortLabel("leader")}`,
+      `校准：${leaderId ? leaderId : "未选择"}`,
+      `模式：${state.modeLeader === "existing" ? "使用已有" : "新建校准"}`,
+      `摄像头：${state.camMain ? (state.cams.find(c=>c.deviceId===state.camMain)?.label || "已选") : "未选"}`
+    ].map(x => `• ${x}`).join("<br>");
+
+    kpiFollower.innerHTML = [
+      `串口：${getSelectedPortLabel("follower")}`,
+      `校准：${followerId ? followerId : "未选择"}`,
+      `模式：${state.modeFollower === "existing" ? "使用已有" : "新建校准"}`,
+      `摄像头：${state.camAux ? (state.cams.find(c=>c.deviceId===state.camAux)?.label || "已选") : "未选"}`
+    ].map(x => `• ${x}`).join("<br>");
+
+    const ready = !!leaderId && !!followerId;
+    summaryPill.textContent = ready ? "可生成命令" : "请选择主/从臂校准 ID";
+    summaryPill.className = "pill " + (ready ? "ok" : "warn");
+  }
+
+  function renderModeUI() {
+    $("leaderExistingWrap").style.display = (state.modeLeader === "existing") ? "" : "none";
+    $("leaderNewWrap").style.display = (state.modeLeader === "new") ? "" : "none";
+    $("followerExistingWrap").style.display = (state.modeFollower === "existing") ? "" : "none";
+    $("followerNewWrap").style.display = (state.modeFollower === "new") ? "" : "none";
+  }
+
+  function renderCamerasUI() {
+    const selMain = $("selCamMain");
+    const selAux = $("selCamAux");
+
+    const fill = (sel, currentId) => {
+      sel.innerHTML = "";
+      const o0 = document.createElement("option");
+      o0.value = "";
+      o0.textContent = state.cams.length ? "（不使用）" : "（未扫描）";
+      sel.appendChild(o0);
+      state.cams.forEach((c, idx) => {
+        const o = document.createElement("option");
+        o.value = c.deviceId;
+        o.textContent = c.label || `Camera #${idx}`;
+        sel.appendChild(o);
+      });
+      sel.value = currentId || "";
+    };
+
+    fill(selMain, state.camMain);
+    fill(selAux, state.camAux);
+  }
+
+  function renderAll() {
+    renderPortsUI();
+    renderCalibrationTable();
+    renderIdDropdowns();
+    renderModeUI();
+    renderCamerasUI();
+    renderSummary();
+  }
+
+  async function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+  }
+
+  function padOctal(value, bytes) {
+    const s = value.toString(8);
+    return (s.length + 1 > bytes) ? s.slice(-bytes+1) + "\\0" : ("0".repeat(bytes - s.length - 1) + s + "\\0");
+  }
+  function writeString(buf, offset, str, len) {
+    const enc = new TextEncoder();
+    const bytes = enc.encode(str);
+    buf.set(bytes.slice(0, len), offset);
+  }
+  function checksum(block) {
+    let sum = 0;
+    for (let i=0;i<512;i++) sum += block[i];
+    return sum;
+  }
+  function makeTar(files) {
+    const blocks = [];
+
+    for (const f of files) {
+      const data = f.data;
+      const header = new Uint8Array(512);
+      writeString(header, 0, f.name, 100);
+      writeString(header, 100, "0000777\\0", 8);
+      writeString(header, 108, "0000000\\0", 8);
+      writeString(header, 116, "0000000\\0", 8);
+      writeString(header, 124, padOctal(data.length, 12), 12);
+      const mtime = Math.floor(Date.now()/1000);
+      writeString(header, 136, padOctal(mtime, 12), 12);
+      for (let i=148; i<156; i++) header[i] = 0x20;
+      header[156] = "0".charCodeAt(0);
+      writeString(header, 257, "ustar\\0", 6);
+      writeString(header, 263, "00", 2);
+
+      const sum = checksum(header);
+      writeString(header, 148, (padOctal(sum, 8).slice(0,7) + "\\0"), 8);
+
+      blocks.push(header);
+      blocks.push(data);
+
+      const padLen = (512 - (data.length % 512)) % 512;
+      if (padLen) blocks.push(new Uint8Array(padLen));
+    }
+
+    blocks.push(new Uint8Array(512));
+    blocks.push(new Uint8Array(512));
+
+    const total = blocks.reduce((a,b)=>a+b.length, 0);
+    const out = new Uint8Array(total);
+    let off=0;
+    for (const b of blocks) { out.set(b, off); off += b.length; }
+    return out;
+  }
+
+  async function exportSelectedCalibrationTar() {
+    const ids = Array.from(state.selectedCalibIds);
+    if (!ids.length) { alert("请在校准库里勾选要导出的校准文件"); return; }
+    const items = state.calibFiles.filter(x => state.selectedCalibIds.has(x.id));
+    const files = [];
+    for (const it of items) {
+      const f = await it.fileHandle.getFile();
+      const data = new Uint8Array(await f.arrayBuffer());
+      files.push({ name: it.filename, data });
+    }
+    const tar = makeTar(files);
+    await downloadBlob(new Blob([tar], {type:"application/x-tar"}), `lerobot_calibration_${Date.now()}.tar`);
+    log(`已导出校准 tar：${files.length} 个文件`);
+  }
+
+  async function exportDataDirTar() {
+    if (!window.showDirectoryPicker) {
+      alert("当前浏览器不支持 File System Access API");
+      return;
+    }
+    try {
+      const dir = await window.showDirectoryPicker();
+      const files = [];
+      for await (const [name, handle] of dir.entries()) {
+        if (handle.kind !== "file") continue;
+        const f = await handle.getFile();
+        const data = new Uint8Array(await f.arrayBuffer());
+        files.push({ name, data });
+      }
+      if (!files.length) { alert("该目录下没有文件（当前导出为目录根文件，不递归子目录）"); return; }
+      const tar = makeTar(files);
+      await downloadBlob(new Blob([tar], {type:"application/x-tar"}), `lerobot_data_${Date.now()}.tar`);
+      log(`已导出数据 tar：${files.length} 个文件（非递归）`);
+    } catch (e) {
+      log(`导出失败: ${e?.message || e}`);
+    }
+  }
+
+  // Live
+  class ServoBus {
+    constructor(name, connPillEl, tbodyEl) {
+      this.name = name;
+      this.connPillEl = connPillEl;
+      this.tbodyEl = tbodyEl;
+      this.port = null;
+      this.writer = null;
+      this.reader = null;
+      this.rx = [];
+      this.reading = false;
+      this.op = Promise.resolve();
+      this.devices = new Map();
+    }
+    setConnState(text, ok=false) {
+      this.connPillEl.textContent = text;
+      this.connPillEl.className = "pill " + (ok ? "ok" : "");
+    }
+    async disconnect() {
+      this.reading = false;
+      try { if (this.reader) await this.reader.cancel(); } catch {}
+      try { if (this.reader) this.reader.releaseLock(); } catch {}
+      try { if (this.writer) this.writer.releaseLock(); } catch {}
+      try { if (this.port) await this.port.close(); } catch {}
+      this.port = null; this.writer = null; this.reader = null;
+      this.setConnState("未连接", false);
+    }
+    checksum(dataBytes) {
+      let sum = 0;
+      for (const b of dataBytes) sum += (b & 0xFF);
+      return (~sum) & 0xFF;
+    }
+    buildPacket(dataBytes) {
+      const chk = this.checksum(dataBytes);
+      return new Uint8Array([0xFF, 0xFF, ...dataBytes, chk]);
+    }
+    verify(frame) {
+      if (!frame || frame.length < 6) return false;
+      const len = frame[3];
+      const total = 2 + 1 + 1 + len;
+      if (frame.length !== total) return false;
+      const dataBytes = frame.slice(2, frame.length-1);
+      const chk = this.checksum(dataBytes);
+      return chk === frame[frame.length-1];
+    }
+    withLock(fn) {
+      const next = this.op.then(fn, fn);
+      this.op = next.catch(()=>{});
+      return next;
+    }
+    async startReadLoop() {
+      if (!this.reader) return;
+      (async () => {
+        try {
+          while (this.reading) {
+            const { value, done } = await this.reader.read();
+            if (done) break;
+            if (value && value.length) {
+              for (const b of value) this.rx.push(b);
+              if (this.rx.length > 8192) this.rx = this.rx.slice(-4096);
+            }
+          }
+        } catch(e) {
+          log(`${this.name} 读取异常: ${e?.message || e}`);
+        }
+      })();
+    }
+    tryPopFrame() {
+      for (let i=0; i+6<=this.rx.length; i++) {
+        if (this.rx[i]!==0xFF || this.rx[i+1]!==0xFF) continue;
+        const len = this.rx[i+3];
+        const total = 2 + 1 + 1 + len;
+        if (i+total > this.rx.length) return null;
+        const frame = this.rx.slice(i, i+total);
+        this.rx = this.rx.slice(i+total);
+        if (!this.verify(frame)) continue;
+        return frame;
+      }
+      if (this.rx.length > 4096) this.rx = this.rx.slice(-1024);
+      return null;
+    }
+    async waitFrame(expectedId, timeoutMs) {
+      const start = performance.now();
+      while (performance.now() - start < timeoutMs) {
+        const fr = this.tryPopFrame();
+        if (!fr) { await new Promise(r=>setTimeout(r,1)); continue; }
+        const id = fr[2];
+        if (expectedId == null || id === expectedId) return fr;
+      }
+      return null;
+    }
+    async writeRaw(u8) {
+      if (!this.writer) throw new Error("未连接");
+      await this.writer.write(u8);
+    }
+    async readReg(id, addr, size, timeoutMs=35) {
+      return this.withLock(async () => {
+        this.rx = [];
+        await this.writeRaw(this.buildPacket([id & 0xFF, 0x04, 0x02, addr & 0xFF, size & 0xFF]));
+        const fr = await this.waitFrame(id, timeoutMs);
+        if (!fr) return null;
+        if (fr[4] !== 0) return null;
+        const paramsLen = fr[3] - 2;
+        return fr.slice(5, 5 + paramsLen);
+      });
+    }
+    ensureDevices(ids) {
+      for (const id of ids) if (!this.devices.has(id)) this.devices.set(id, { online:false, pos:null, fail:0 });
+      for (const k of Array.from(this.devices.keys())) if (!ids.includes(k)) this.devices.delete(k);
+    }
+    renderTable(ids) {
+      this.tbodyEl.innerHTML = "";
+      for (const id of ids) {
+        const tr = document.createElement("tr");
+        const tdId = document.createElement("td"); tdId.textContent = String(id);
+        const tdOn = document.createElement("td");
+        const tdPos = document.createElement("td");
+        tr.append(tdId, tdOn, tdPos);
+        this.tbodyEl.appendChild(tr);
+      }
+    }
+    updateRows(ids) {
+      const rows = this.tbodyEl.querySelectorAll("tr");
+      ids.forEach((id, idx) => {
+        const d = this.devices.get(id);
+        const tr = rows[idx];
+        if (!tr || !d) return;
+        tr.children[1].textContent = d.online ? "✅" : "";
+        tr.children[2].textContent = (d.pos == null) ? "" : String(d.pos);
+      });
+    }
+    async pollOnce(ids) {
+      this.ensureDevices(ids);
+      for (const id of ids) {
+        const d = this.devices.get(id);
+        const params = await this.readReg(id, 0x38, 2, 30);
+        if (!params || params.length < 2) {
+          d.fail += 1;
+          if (d.fail >= 3) { d.online = false; d.pos = null; }
+          continue;
+        }
+        d.pos = params[0] | (params[1] << 8);
+        d.online = true;
+        d.fail = 0;
+      }
+    }
+  }
+
+  const dlgCmd = $("dlgCmd");
+  const dlgLive = $("dlgLive");
+  const txtTeleop = $("txtTeleop");
+  const txtCalLeader = $("txtCalLeader");
+  const txtCalFollower = $("txtCalFollower");
+  const txtRecord = $("txtRecord");
+  const cmdTabs = $("cmdTabs");
+  let currentOS = "linux";
+
+  function updateCmdTexts() {
+    const cmds = buildCommands(currentOS);
+    txtTeleop.value = cmds.teleop;
+    txtCalLeader.value = cmds.calLeader;
+    txtCalFollower.value = cmds.calFollower;
+    txtRecord.value = cmds.record;
+  }
+
+  function scriptForOS(os, text) {
+    if (os === "win") return `# LeRobot 配置工具V1（Web Serial / 桌面 Chrome）\\n# 由网页工具生成\\n\\n${text}\\n`;
+    return `#!/usr/bin/env bash\\n# LeRobot 配置工具V1（Web Serial / 桌面 Chrome）\\n# 由网页工具生成\\n\\nset -e\\n\\n${text}\\n`;
+  }
+
+  async function copyToClipboard(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      log("已复制到剪贴板");
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta);
+      ta.select(); document.execCommand("copy");
+      ta.remove();
+      log("已复制到剪贴板（fallback）");
+    }
+  }
+
+  $("btnClearLog").onclick = () => { logEl.textContent = ""; };
+  $("btnAddLeaderPort").onclick = () => addPortFlow("leader");
+  $("btnAddFollowerPort").onclick = () => addPortFlow("follower");
+  $("btnEnableCamera").onclick = () => enableAndScanCameras();
+  $("btnPickCalibDir").onclick = () => pickCalibrationDir();
+  $("btnRescanCalib").onclick = () => scanCalibrationDir();
+
+  $("btnOpenCmd").onclick = () => { updateCmdTexts(); dlgCmd.showModal(); };
+  $("btnCloseCmd").onclick = () => dlgCmd.close();
+
+  $("btnOpenLive").onclick = () => { dlgLive.showModal(); };
+  $("btnCloseLive").onclick = () => { stopLive(); dlgLive.close(); };
+
+  bindAutoSave($("selLeaderPort"), () => { state.leaderPortKey = $("selLeaderPort").value; });
+  bindAutoSave($("selFollowerPort"), () => { state.followerPortKey = $("selFollowerPort").value; });
+  bindAutoSave($("selCamMain"), () => { state.camMain = $("selCamMain").value; });
+  bindAutoSave($("selCamAux"), () => { state.camAux = $("selCamAux").value; });
+
+  bindAutoSave($("modeLeader"), () => { state.modeLeader = $("modeLeader").value; renderModeUI(); });
+  bindAutoSave($("modeFollower"), () => { state.modeFollower = $("modeFollower").value; renderModeUI(); });
+  bindAutoSave($("selLeaderId"), () => { state.leaderId = $("selLeaderId").value; });
+  bindAutoSave($("selFollowerId"), () => { state.followerId = $("selFollowerId").value; });
+  bindAutoSave($("inpLeaderNewId"), () => { state.leaderNewId = $("inpLeaderNewId").value; });
+  bindAutoSave($("inpFollowerNewId"), () => { state.followerNewId = $("inpFollowerNewId").value; });
+
+  bindAutoSave($("inpBaud"), () => { state.baud = Number($("inpBaud").value || 1000000); });
+  bindAutoSave($("inpJointIds"), () => { state.jointIds = $("inpJointIds").value; });
+  bindAutoSave($("inpCameraJson"), () => { state.cameraJson = $("inpCameraJson").value; });
+  bindAutoSave($("selDisplayData"), () => { state.displayData = $("selDisplayData").value; });
+
+  cmdTabs.addEventListener("click", (e) => {
+    const tab = e.target.closest(".tab");
+    if (!tab) return;
+    currentOS = tab.dataset.os;
+    cmdTabs.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t === tab));
+    updateCmdTexts();
+  });
+
+  $("btnCopyCmd").onclick = async () => { await copyToClipboard(txtTeleop.value); };
+  $("btnDownloadScript").onclick = async () => {
+    const script = scriptForOS(currentOS, txtTeleop.value);
+    const ext = currentOS === "win" ? "ps1" : "sh";
+    await downloadBlob(new Blob([script], {type:"text/plain"}), `lerobot_teleop_${Date.now()}.${ext}`);
+    log("已下载脚本");
+  };
+
+  $("btnExportSelectedCalib").onclick = () => exportSelectedCalibrationTar().catch(e => log(e?.message||e));
+  $("btnPickDataDir").onclick = () => exportDataDirTar().catch(e => log(e?.message||e));
+
+  // Live modal
+  const leaderConnState = $("leaderConnState");
+  const followerConnState = $("followerConnState");
+  const tbodyLeader = $("tbodyLeader");
+  const tbodyFollower = $("tbodyFollower");
+  const liveState = $("liveState");
+  const inpLivePeriod = $("inpLivePeriod");
+
+  $("inpBaud").value = String(state.baud || 1000000);
+  $("inpJointIds").value = String(state.jointIds || "1,2,3,4,5,6");
+  $("inpCameraJson").value = String(state.cameraJson || "");
+  $("selDisplayData").value = state.displayData || "true";
+  $("modeLeader").value = state.modeLeader || "existing";
+  $("modeFollower").value = state.modeFollower || "existing";
+  $("inpLeaderNewId").value = state.leaderNewId || "";
+  $("inpFollowerNewId").value = state.followerNewId || "";
+  $("selLeaderId").value = state.leaderId || "";
+  $("selFollowerId").value = state.followerId || "";
+
+  inpLivePeriod.value = "50";
+
+  let busLeader = null;
+  let busFollower = null;
+  let liveRunning = false;
+
+  function parseJointIds() {
+    const txt = (state.jointIds || "").trim();
+    const ids = txt.split(",").map(s => Number(s.trim())).filter(n => Number.isFinite(n) && n>=1 && n<=253);
+    const seen = new Set();
+    return ids.filter(n => (seen.has(n) ? false : (seen.add(n), true)));
+  }
+  function ensureLiveTables() {
+    const ids = parseJointIds();
+    if (!busLeader) busLeader = new ServoBus("主臂", leaderConnState, tbodyLeader);
+    if (!busFollower) busFollower = new ServoBus("从臂", followerConnState, tbodyFollower);
+    busLeader.renderTable(ids);
+    busFollower.renderTable(ids);
+  }
+
+  async function connectBus(which) {
+    try {
+      const selected = getSelectedPort(which);
+      if (!selected) { alert("请先在主页面选择该角色的串口"); return; }
+      const baud = Number(state.baud || 1000000);
+      const port = selected;
+      await port.open({ baudRate: baud });
+
+      const bus = (which === "leader") ? (busLeader || (busLeader = new ServoBus("主臂", leaderConnState, tbodyLeader)))
+                                      : (busFollower || (busFollower = new ServoBus("从臂", followerConnState, tbodyFollower)));
+      bus.port = port;
+      bus.writer = port.writable.getWriter();
+      bus.reader = port.readable.getReader();
+      bus.reading = true;
+      bus.rx = [];
+      bus.startReadLoop();
+      bus.setConnState("已连接", true);
+      log(`${which === "leader" ? "主臂" : "从臂"} 串口已连接，baud=${baud}`);
+    } catch (e) {
+      log(`连接失败: ${e?.message || e}`);
+      alert(`连接失败：${e?.message || e}`);
+    }
+  }
+
+  async function startLive() {
+    const ids = parseJointIds();
+    if (!ids.length) { alert("关节 ID 列表为空"); return; }
+    ensureLiveTables();
+    if (!busLeader?.port || !busFollower?.port) {
+      alert("请先分别连接主臂与从臂串口");
+      return;
+    }
+    const period = Math.max(20, Number(inpLivePeriod.value || 50));
+
+    liveRunning = true;
+    $("btnStartLive").disabled = true;
+    $("btnStopLive").disabled = false;
+    liveState.textContent = "运行中";
+    liveState.className = "pill ok";
+
+    while (liveRunning) {
+      const t0 = performance.now();
+      await Promise.all([
+        busLeader.pollOnce(ids).catch(()=>{}),
+        busFollower.pollOnce(ids).catch(()=>{}),
+      ]);
+      busLeader.updateRows(ids);
+      busFollower.updateRows(ids);
+      const dt = performance.now() - t0;
+      const rest = Math.max(0, period - dt);
+      await new Promise(r => setTimeout(r, rest));
+    }
+    liveState.textContent = "已停止";
+    liveState.className = "pill";
+    $("btnStartLive").disabled = false;
+    $("btnStopLive").disabled = true;
+  }
+  function stopLive() { liveRunning = false; }
+
+  $("btnConnectLeader").onclick = () => { ensureLiveTables(); connectBus("leader"); };
+  $("btnConnectFollower").onclick = () => { ensureLiveTables(); connectBus("follower"); };
+  $("btnStartLive").onclick = () => startLive();
+  $("btnStopLive").onclick = () => stopLive();
+
+  // Boot
+  (async () => {
+    await refreshAuthorizedPorts();
+    renderModeUI();
+    renderAll();
+    setDirty(false);
+    saveToLS();
+  })();
+
+})();
+</script>
+</body>
+</html>
